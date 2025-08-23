@@ -44,14 +44,14 @@ interface Lead {
 }
 
 const defaultColumns = [
-  { key: 'lead_name', label: 'Lead Name', visible: true },
-  { key: 'company_name', label: 'Company Name', visible: true },
-  { key: 'position', label: 'Position', visible: true },
-  { key: 'email', label: 'Email', visible: true },
-  { key: 'phone_no', label: 'Phone', visible: true },
-  { key: 'country', label: 'Region', visible: true },
-  { key: 'contact_owner', label: 'Lead Owner', visible: true },
-  { key: 'lead_status', label: 'Lead Status', visible: true },
+  { key: 'lead_name', label: 'Lead Name', visible: true, field: 'lead_name', order: 1 },
+  { key: 'company_name', label: 'Company Name', visible: true, field: 'company_name', order: 2 },
+  { key: 'position', label: 'Position', visible: true, field: 'position', order: 3 },
+  { key: 'email', label: 'Email', visible: true, field: 'email', order: 4 },
+  { key: 'phone_no', label: 'Phone', visible: true, field: 'phone_no', order: 5 },
+  { key: 'country', label: 'Region', visible: true, field: 'country', order: 6 },
+  { key: 'contact_owner', label: 'Lead Owner', visible: true, field: 'contact_owner', order: 7 },
+  { key: 'lead_status', label: 'Lead Status', visible: true, field: 'lead_status', order: 8 },
 ];
 
 const LeadTable: React.FC<LeadTableProps> = ({ 
@@ -192,7 +192,7 @@ const LeadTable: React.FC<LeadTableProps> = ({
               className="pl-10 w-80"
             />
           </div>
-          <LeadStatusFilter value={statusFilter} onChange={setStatusFilter} />
+          <LeadStatusFilter value={statusFilter} onValueChange={setStatusFilter} />
         </div>
       </div>
 
@@ -316,10 +316,10 @@ const LeadTable: React.FC<LeadTableProps> = ({
       />
 
       <LeadModal
-        isOpen={showModal}
-        onClose={() => {
-          setShowModal(false);
-          setSelectedLead(null);
+        open={showModal}
+        onOpenChange={(open) => {
+          setShowModal(open);
+          if (!open) setSelectedLead(null);
         }}
         lead={selectedLead}
         onSuccess={() => {
@@ -330,10 +330,10 @@ const LeadTable: React.FC<LeadTableProps> = ({
       />
 
       <LeadActionItemsModal
-        isOpen={showActionItemsModal}
-        onClose={() => {
-          setShowActionItemsModal(false);
-          setSelectedLead(null);
+        open={showActionItemsModal}
+        onOpenChange={(open) => {
+          setShowActionItemsModal(open);
+          if (!open) setSelectedLead(null);
         }}
         leadId={selectedLead?.id || ''}
         leadName={selectedLead?.lead_name || ''}
