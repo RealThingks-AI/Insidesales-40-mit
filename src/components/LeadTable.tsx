@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -309,10 +308,8 @@ const LeadTable: React.FC<LeadTableProps> = ({
 
       {/* Modals */}
       <ColumnCustomizer
-        isOpen={showColumnCustomizer}
-        onClose={() => setShowColumnCustomizer(false)}
         columns={visibleColumns}
-        onColumnsChange={setVisibleColumns}
+        onUpdate={setVisibleColumns}
       />
 
       <LeadModal
@@ -335,8 +332,7 @@ const LeadTable: React.FC<LeadTableProps> = ({
           setShowActionItemsModal(open);
           if (!open) setSelectedLead(null);
         }}
-        leadId={selectedLead?.id || ''}
-        leadName={selectedLead?.lead_name || ''}
+        lead={selectedLead}
       />
     </div>
   );
