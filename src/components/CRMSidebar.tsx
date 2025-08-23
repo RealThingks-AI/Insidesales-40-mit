@@ -1,90 +1,95 @@
 
+import React from 'react';
 import { 
-  Home, Users, Building2, Calendar, Target, 
-  BarChart3, Settings, Plus 
-} from "lucide-react";
-import { NavLink } from "react-router-dom";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent, 
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarHeader,
-  SidebarTrigger,
-  useSidebar,
-} from "@/components/ui/sidebar";
-import { Button } from "@/components/ui/button";
+  Home, 
+  Users, 
+  Briefcase, 
+  UserPlus, 
+  Settings, 
+  Bell,
+  ChevronLeft,
+  ChevronRight
+} from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { useSidebar } from '@/components/ui/sidebar/SidebarProvider';
+import { NotificationBell } from '@/components/NotificationBell';
 
-const navigation = [
-  { title: "Dashboard", url: "/", icon: Home },
-  { title: "Customers", url: "/customers", icon: Users },
-  { title: "Companies", url: "/companies", icon: Building2 },
-  { title: "Deals", url: "/deals", icon: Target },
-  { title: "Calendar", url: "/calendar", icon: Calendar },
-  { title: "Analytics", url: "/analytics", icon: BarChart3 },
-  { title: "Settings", url: "/settings", icon: Settings },
-];
+const CrmSidebar = () => {
+  const location = useLocation();
+  const { state, toggleSidebar } = useSidebar();
+  const isCollapsed = state === 'collapsed';
 
-export function CRMSidebar() {
-  const { collapsed } = useSidebar();
+  const menuItems = [
+    { icon: Home, label: 'Dashboard', path: '/dashboard' },
+    { icon: Users, label: 'Contacts', path: '/contacts' },
+    { icon: Briefcase, label: 'Deals', path: '/deals' },
+    { icon: UserPlus, label: 'Leads', path: '/leads' },
+    { icon: Bell, label: 'Notifications', path: '/notifications' },
+    { icon: Settings, label: 'Settings', path: '/settings' },
+  ];
 
   return (
-    <Sidebar className={collapsed ? "w-14" : "w-64"} collapsible>
-      <SidebarHeader className="border-b border-sidebar-border p-4">
-        <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-            <Building2 className="h-4 w-4 text-primary-foreground" />
-          </div>
-          {!collapsed && (
-            <div>
-              <h1 className="text-sm font-semibold text-sidebar-foreground">CRM Pro</h1>
-              <p className="text-xs text-sidebar-foreground/60">Sales Pipeline</p>
-            </div>
-          )}
-        </div>
-        <SidebarTrigger className="ml-auto" />
-      </SidebarHeader>
-
-      <SidebarContent className="p-2">
-        {!collapsed && (
-          <div className="mb-4">
-            <Button className="w-full justify-start gap-2" size="sm">
-              <Plus className="h-4 w-4" />
-              Quick Add
-            </Button>
-          </div>
+    <div className={`bg-sidebar border-r border-border h-full flex flex-col transition-all duration-300 ${
+      isCollapsed ? 'w-16' : 'w-64'
+    }`}>
+      {/* Header */}
+      <div className="p-4 border-b border-border flex items-center justify-between">
+        {!isCollapsed && (
+          <h1 className="text-xl font-bold text-foreground">CRM</h1>
         )}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={toggleSidebar}
+          className="h-8 w-8 p-0"
+        >
+          {isCollapsed ? (
+            <ChevronRight className="h-4 w-4" />
+          ) : (
+            <ChevronLeft className="h-4 w-4" />
+          )}
+        </Button>
+      </div>
 
-        <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {navigation.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <NavLink 
-                      to={item.url} 
-                      end
-                      className={({ isActive }) =>
-                        isActive 
-                          ? "bg-sidebar-accent text-sidebar-primary font-medium" 
-                          : "hover:bg-sidebar-accent/50"
-                      }
-                    >
-                      <item.icon className="h-4 w-4" />
-                      {!collapsed && <span>{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-    </Sidebar>
+      {/* Navigation */}
+      <nav className="flex-1 p-4">
+        <ul className="space-y-2">
+          {menuItems.map((item) => {
+            const isActive = location.pathname === item.path;
+            const Icon = item.icon;
+            
+            return (
+              <li key={item.path}>
+                <Link
+                  to={item.path}
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                    isActive
+                      ? 'bg-accent text-accent-foreground'
+                      : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'
+                  }`}
+                >
+                  <Icon className="h-5 w-5 flex-shrink-0" />
+                  {!isCollapsed && (
+                    <span className="truncate">{item.label}</span>
+                  )}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+
+      {/* Notification Bell - Fixed position */}
+      {!isCollapsed && (
+        <div className="p-4 border-t border-border">
+          <div className="flex justify-center">
+            <NotificationBell placement="up" size="large" />
+          </div>
+        </div>
+      )}
+    </div>
   );
-}
+};
+
+export default CrmSidebar;
