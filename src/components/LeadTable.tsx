@@ -6,7 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Edit, Trash2, ArrowUpDown, ArrowUp, ArrowDown, FileText } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
-import { ColumnCustomizer } from "./ColumnCustomizer";
+import { ColumnCustomizer, ColumnConfig } from "./ColumnCustomizer";
 import { LeadModal } from "./LeadModal";
 import { LeadActionItemsModal } from "./LeadActionItemsModal";
 import { useSecureLeads } from "@/hooks/useSecureLeads";
@@ -42,15 +42,15 @@ interface Lead {
   description?: string;
 }
 
-const defaultColumns = [
-  { key: 'lead_name', label: 'Lead Name', visible: true, field: 'lead_name', order: 1 },
-  { key: 'company_name', label: 'Company Name', visible: true, field: 'company_name', order: 2 },
-  { key: 'position', label: 'Position', visible: true, field: 'position', order: 3 },
-  { key: 'email', label: 'Email', visible: true, field: 'email', order: 4 },
-  { key: 'phone_no', label: 'Phone', visible: true, field: 'phone_no', order: 5 },
-  { key: 'country', label: 'Region', visible: true, field: 'country', order: 6 },
-  { key: 'contact_owner', label: 'Lead Owner', visible: true, field: 'contact_owner', order: 7 },
-  { key: 'lead_status', label: 'Lead Status', visible: true, field: 'lead_status', order: 8 },
+const defaultColumns: ColumnConfig[] = [
+  { field: 'lead_name', label: 'Lead Name', visible: true, order: 1 },
+  { field: 'company_name', label: 'Company Name', visible: true, order: 2 },
+  { field: 'position', label: 'Position', visible: true, order: 3 },
+  { field: 'email', label: 'Email', visible: true, order: 4 },
+  { field: 'phone_no', label: 'Phone', visible: true, order: 5 },
+  { field: 'country', label: 'Region', visible: true, order: 6 },
+  { field: 'contact_owner', label: 'Lead Owner', visible: true, order: 7 },
+  { field: 'lead_status', label: 'Lead Status', visible: true, order: 8 },
 ];
 
 const LeadTable: React.FC<LeadTableProps> = ({ 
@@ -64,7 +64,7 @@ const LeadTable: React.FC<LeadTableProps> = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-  const [visibleColumns, setVisibleColumns] = useState(defaultColumns);
+  const [visibleColumns, setVisibleColumns] = useState<ColumnConfig[]>(defaultColumns);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [showActionItemsModal, setShowActionItemsModal] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('');
@@ -151,20 +151,20 @@ const LeadTable: React.FC<LeadTableProps> = ({
     setShowActionItemsModal(true);
   };
 
-  const getDisplayValue = (lead: Lead, columnKey: string) => {
-    if (columnKey === 'contact_owner') {
+  const getDisplayValue = (lead: Lead, columnField: string) => {
+    if (columnField === 'contact_owner') {
       if (!lead.contact_owner) return '-';
       const displayName = displayNames[lead.contact_owner];
       return displayName && displayName !== "Unknown User" ? displayName : 
              (displayName === "Unknown User" ? "Unknown User" : "Loading...");
-    } else if (columnKey === 'lead_status' && lead.lead_status) {
+    } else if (columnField === 'lead_status' && lead.lead_status) {
       return (
         <Badge variant={lead.lead_status === 'Converted' ? 'default' : 'secondary'}>
           {lead.lead_status}
         </Badge>
       );
     } else {
-      return lead[columnKey as keyof Lead] || '-';
+      return lead[columnField as keyof Lead] || '-';
     }
   };
 
@@ -209,15 +209,15 @@ const LeadTable: React.FC<LeadTableProps> = ({
                 </div>
               </TableHead>
               {visibleColumns.filter(col => col.visible).map((column) => (
-                <TableHead key={column.key} className="text-left font-bold text-foreground px-4 py-4">
+                <TableHead key={column.field} className="text-left font-bold text-foreground px-4 py-4">
                   <Button
                     variant="ghost"
                     className="h-auto p-0 font-bold hover:bg-transparent justify-start text-foreground"
-                    onClick={() => handleSort(column.key)}
+                    onClick={() => handleSort(column.field)}
                   >
                     <div className="flex items-center gap-2">
                       {column.label}
-                      {getSortIcon(column.key)}
+                      {getSortIcon(column.field)}
                     </div>
                   </Button>
                 </TableHead>
@@ -251,18 +251,18 @@ const LeadTable: React.FC<LeadTableProps> = ({
                     </div>
                   </TableCell>
                   {visibleColumns.filter(col => col.visible).map((column) => (
-                    <TableCell key={column.key} className="text-left px-4 py-3 align-middle">
+                    <TableCell key={column.field} className="text-left px-4 py-3 align-middle">
                       <div className="truncate max-w-[200px]">
-                        {column.key === 'lead_name' ? (
+                        {column.field === 'lead_name' ? (
                           <button
                             onClick={() => handleEdit(lead)}
                             className="text-primary hover:underline font-medium text-left"
                           >
-                            {lead[column.key as keyof Lead]}
+                            {lead[column.field as keyof Lead]}
                           </button>
                         ) : (
                           <span className="text-sm">
-                            {getDisplayValue(lead, column.key)}
+                            {getDisplayValue(lead, column.field)}
                           </span>
                         )}
                       </div>
