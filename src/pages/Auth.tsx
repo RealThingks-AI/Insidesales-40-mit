@@ -150,7 +150,6 @@ const Auth = () => {
             RealThingks Deals
           </CardTitle>
           <CardDescription className="text-base mt-2">
-            Sign in to access your deals pipeline
           </CardDescription>
         </CardHeader>
         <CardContent>
