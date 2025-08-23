@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Plus, Settings } from "lucide-react";
 import { ContactColumnCustomizer } from "./ContactColumnCustomizer";
 import { ContactColumn } from "@/types/columns";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface ContactsModuleHeaderProps {
   onAddContact: () => void;
@@ -42,36 +41,24 @@ const ContactsModuleHeader = ({ onAddContact, columns, onColumnsChange }: Contac
         <p className="text-muted-foreground">Manage your business contacts</p>
       </div>
       <div className="flex items-center gap-4">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button 
-              onClick={() => setIsCustomizerOpen(true)} 
-              variant="outline"
-              size="icon"
-            >
-              <Settings className="w-4 h-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Customize Columns</p>
-          </TooltipContent>
-        </Tooltip>
+        <Button 
+          onClick={() => setIsCustomizerOpen(true)} 
+          variant="outline"
+          size="sm"
+        >
+          <Settings className="w-4 h-4 mr-2" />
+          Customize Columns
+        </Button>
         <ContactColumnCustomizer 
           open={isCustomizerOpen}
           onOpenChange={setIsCustomizerOpen}
           columns={convertToColumnConfig(columns)}
           onColumnsChange={(configs) => onColumnsChange(convertFromColumnConfig(configs))}
         />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button onClick={onAddContact} variant="outline" size="icon">
-              <Plus className="w-4 h-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Add Contact</p>
-          </TooltipContent>
-        </Tooltip>
+        <Button onClick={onAddContact} className="btn-primary">
+          <Plus className="w-4 h-4 mr-2" />
+          Add Contact
+        </Button>
       </div>
     </div>
   );
