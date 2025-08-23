@@ -1,3 +1,4 @@
+
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -25,13 +26,12 @@ export const BulkActionsBar = ({ selectedCount, onDelete, onExport, onClearSelec
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                size="sm"
+                size="icon"
                 variant="outline"
                 onClick={onExport}
-                className="hover-scale button-scale transition-all hover:shadow-md px-3"
+                className="hover-scale button-scale transition-all hover:shadow-md"
               >
-                <Download className="w-4 h-4 sm:mr-2" />
-                <span className="hidden sm:inline">Export</span>
+                <Download className="w-4 h-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>
@@ -42,13 +42,12 @@ export const BulkActionsBar = ({ selectedCount, onDelete, onExport, onClearSelec
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                size="sm"
+                size="icon"
                 variant="destructive"
                 onClick={onDelete}
-                className="hover-scale button-scale transition-all hover:shadow-md px-3"
+                className="hover-scale button-scale transition-all hover:shadow-md"
               >
-                <Trash2 className="w-4 h-4 sm:mr-2" />
-                <span className="hidden sm:inline">Delete</span>
+                <Trash2 className="w-4 h-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>
@@ -59,10 +58,10 @@ export const BulkActionsBar = ({ selectedCount, onDelete, onExport, onClearSelec
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                size="sm"
+                size="icon"
                 variant="ghost"
                 onClick={onClearSelection}
-                className="hover-scale button-scale transition-all p-2"
+                className="hover-scale button-scale transition-all"
               >
                 <X className="w-4 h-4" />
               </Button>
