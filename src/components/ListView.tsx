@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/table';
 import { DealActionsDropdown } from '@/components/DealActionsDropdown';
 import { DealsFilterPanel } from '@/components/DealsFilterPanel';
-import { DealColumnCustomizer } from '@/components/DealColumnCustomizer';
+import { DealColumnCustomizer, DealColumnConfig } from '@/components/DealColumnCustomizer';
 import { BulkActionsBar } from '@/components/BulkActionsBar';
 import { InlineEditCell } from '@/components/InlineEditCell';
 import { 
@@ -29,7 +29,9 @@ import {
   Trash2
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { formatCurrency } from '@/utils/csvUtils';
+import { useDealsImportExport } from '@/hooks/useDealsImportExport';
+// Removed import of formatCurrency from csvUtils (not exported there)
+// import { formatCurrency } from '@/utils/csvUtils';
 
 interface ListViewProps {
   deals: Deal[];
@@ -76,6 +78,60 @@ export const ListView: React.FC<ListViewProps> = ({
     expected_closing_date: true,
     actions: true,
   });
+
+  // Local currency formatter (replaces missing csvUtils.formatCurrency)
+  const formatCurrency = (amount?: number, currencyType?: string) => {
+    if (amount == null || isNaN(Number(amount))) return '-';
+    const symbols: Record<string, string> = { USD: '$', EUR: '€', INR: '₹' };
+    const symbol = currencyType ? (symbols[currencyType] ?? '') : '';
+    return `${symbol}${Number(amount).toLocaleString()}`;
+  };
+
+  // Export handlers via import/export hook
+  const { handleExportAll, handleExportSelected } = useDealsImportExport({
+    onRefresh: () => window.location.reload(),
+  });
+
+  // Helper: convert date to YYYY-MM-DD for date inputs
+  const toYMD = (d?: string | Date | null) => {
+    if (!d) return '';
+    const date = new Date(d);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toISOString().slice(0, 10);
+  };
+
+  // Map visibleColumns to DealColumnCustomizer columns API
+  const columnsForCustomizer: DealColumnConfig[] = useMemo(() => {
+    const base: DealColumnConfig[] = [
+      { field: 'project_name', label: 'Project', visible: visibleColumns.project_name, order: 0 },
+      { field: 'customer_name', label: 'Customer', visible: visibleColumns.customer_name, order: 1 },
+      { field: 'lead_name', label: 'Lead Name', visible: visibleColumns.lead_name, order: 2 },
+      { field: 'lead_owner', label: 'Lead Owner', visible: visibleColumns.lead_owner, order: 3 },
+      { field: 'stage', label: 'Stage', visible: visibleColumns.stage, order: 4 },
+      { field: 'priority', label: 'Priority', visible: visibleColumns.priority, order: 5 },
+      { field: 'total_contract_value', label: 'Value', visible: visibleColumns.total_contract_value, order: 6 },
+      { field: 'probability', label: 'Probability', visible: visibleColumns.probability, order: 7 },
+      { field: 'expected_closing_date', label: 'Expected Close', visible: visibleColumns.expected_closing_date, order: 8 },
+      // Extra fields supported by the customizer but not currently rendered in the table:
+      { field: 'region', label: 'Region', visible: false, order: 9 },
+      { field: 'project_duration', label: 'Duration', visible: false, order: 10 },
+      { field: 'start_date', label: 'Start Date', visible: false, order: 11 },
+      { field: 'end_date', label: 'End Date', visible: false, order: 12 },
+      { field: 'proposal_due_date', label: 'Proposal Due', visible: false, order: 13 },
+      { field: 'total_revenue', label: 'Total Revenue', visible: false, order: 14 },
+    ];
+    return base;
+  }, [visibleColumns]);
+
+  const handleColumnsChange = (cols: DealColumnConfig[]) => {
+    const updated = { ...visibleColumns };
+    cols.forEach((c) => {
+      if (c.field in updated) {
+        (updated as any)[c.field] = c.visible;
+      }
+    });
+    setVisibleColumns(updated);
+  };
 
   // Sort deals based on current sort configuration
   const sortedDeals = useMemo(() => {
@@ -228,18 +284,27 @@ export const ListView: React.FC<ListViewProps> = ({
               onRefresh={() => window.location.reload()}
               onColumnCustomize={() => setShowColumnCustomizer(true)}
               showColumns
+              onImport={onImportDeals}
             />
           </div>
         </div>
 
         {showFilters && (
-          <DealsFilterPanel onClose={() => setShowFilters(false)} />
+          <DealsFilterPanel open={showFilters} onOpenChange={setShowFilters} />
         )}
 
         {selectedDeals.length > 0 && (
           <BulkActionsBar
             selectedCount={selectedDeals.length}
             onDelete={handleBulkDelete}
+            onExport={() => {
+              const selectedIds = selectedDeals.map(d => d.id);
+              if (selectedIds.length > 0) {
+                handleExportSelected(deals, selectedIds);
+              } else {
+                handleExportAll(deals);
+              }
+            }}
             onClearSelection={() => setSelectedDeals([])}
           />
         )}
@@ -388,7 +453,13 @@ export const ListView: React.FC<ListViewProps> = ({
                   <TableCell>
                     <InlineEditCell
                       value={deal.project_name || deal.deal_name || '-'}
-                      onSave={(value) => onUpdateDeal(deal.id, { project_name: value, deal_name: value })}
+                      field="project_name"
+                      dealId={deal.id}
+                      onSave={(id, _field, val) => {
+                        const v = String(val || '').trim();
+                        onUpdateDeal(id, { project_name: v, deal_name: v });
+                      }}
+                      type="text"
                     />
                   </TableCell>
                 )}
@@ -397,7 +468,10 @@ export const ListView: React.FC<ListViewProps> = ({
                   <TableCell>
                     <InlineEditCell
                       value={deal.customer_name || '-'}
-                      onSave={(value) => onUpdateDeal(deal.id, { customer_name: value })}
+                      field="customer_name"
+                      dealId={deal.id}
+                      onSave={(id, field, val) => onUpdateDeal(id, { [field]: String(val || '') })}
+                      type="text"
                     />
                   </TableCell>
                 )}
@@ -406,7 +480,10 @@ export const ListView: React.FC<ListViewProps> = ({
                   <TableCell>
                     <InlineEditCell
                       value={deal.lead_name || '-'}
-                      onSave={(value) => onUpdateDeal(deal.id, { lead_name: value })}
+                      field="lead_name"
+                      dealId={deal.id}
+                      onSave={(id, field, val) => onUpdateDeal(id, { [field]: String(val || '') })}
+                      type="text"
                     />
                   </TableCell>
                 )}
@@ -415,7 +492,10 @@ export const ListView: React.FC<ListViewProps> = ({
                   <TableCell>
                     <InlineEditCell
                       value={deal.lead_owner || '-'}
-                      onSave={(value) => onUpdateDeal(deal.id, { lead_owner: value })}
+                      field="lead_owner"
+                      dealId={deal.id}
+                      onSave={(id, field, val) => onUpdateDeal(id, { [field]: String(val || '') })}
+                      type="text"
                     />
                   </TableCell>
                 )}
@@ -439,13 +519,16 @@ export const ListView: React.FC<ListViewProps> = ({
                 {visibleColumns.total_contract_value && (
                   <TableCell>
                     <InlineEditCell
-                      value={deal.total_contract_value ? formatCurrency(deal.total_contract_value, deal.currency_type) : '-'}
-                      onSave={(value) => {
-                        const numericValue = parseFloat(value.replace(/[^0-9.-]/g, ''));
+                      value={deal.total_contract_value ? formatCurrency(deal.total_contract_value, (deal as any).currency_type) : '-'}
+                      field="total_contract_value"
+                      dealId={deal.id}
+                      onSave={(id, _field, val) => {
+                        const numericValue = parseFloat(String(val).replace(/[^0-9.-]/g, ''));
                         if (!isNaN(numericValue)) {
-                          onUpdateDeal(deal.id, { total_contract_value: numericValue });
+                          onUpdateDeal(id, { total_contract_value: numericValue });
                         }
                       }}
+                      type="text"
                     />
                   </TableCell>
                 )}
@@ -454,12 +537,15 @@ export const ListView: React.FC<ListViewProps> = ({
                   <TableCell>
                     <InlineEditCell
                       value={deal.probability ? `${deal.probability}%` : '-'}
-                      onSave={(value) => {
-                        const numericValue = parseInt(value.replace('%', ''));
+                      field="probability"
+                      dealId={deal.id}
+                      onSave={(id, _field, val) => {
+                        const numericValue = parseInt(String(val).replace('%', '').trim());
                         if (!isNaN(numericValue)) {
-                          onUpdateDeal(deal.id, { probability: numericValue });
+                          onUpdateDeal(id, { probability: numericValue });
                         }
                       }}
+                      type="text"
                     />
                   </TableCell>
                 )}
@@ -467,8 +553,11 @@ export const ListView: React.FC<ListViewProps> = ({
                 {visibleColumns.expected_closing_date && (
                   <TableCell>
                     <InlineEditCell
-                      value={deal.expected_closing_date ? new Date(deal.expected_closing_date).toLocaleDateString() : '-'}
-                      onSave={(value) => onUpdateDeal(deal.id, { expected_closing_date: value })}
+                      value={deal.expected_closing_date ? toYMD(deal.expected_closing_date) : ''}
+                      field="expected_closing_date"
+                      dealId={deal.id}
+                      onSave={(id, field, val) => onUpdateDeal(id, { [field]: String(val || '') })}
+                      type="date"
                     />
                   </TableCell>
                 )}
@@ -515,9 +604,10 @@ export const ListView: React.FC<ListViewProps> = ({
       {/* Column Customizer Modal */}
       {showColumnCustomizer && (
         <DealColumnCustomizer
-          visibleColumns={visibleColumns}
-          onVisibilityChange={setVisibleColumns}
-          onClose={() => setShowColumnCustomizer(false)}
+          open={showColumnCustomizer}
+          onOpenChange={setShowColumnCustomizer}
+          columns={columnsForCustomizer}
+          onColumnsChange={handleColumnsChange}
         />
       )}
     </div>
