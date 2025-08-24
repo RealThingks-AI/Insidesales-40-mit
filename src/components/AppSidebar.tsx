@@ -7,10 +7,14 @@ import {
   Settings,
   LogOut,
   Pin,
-  PinOff
+  PinOff,
+  Bell,
+  Sun,
+  Moon
 } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { useThemePreferences } from "@/hooks/useThemePreferences";
 import { useState, useEffect } from "react";
 import {
   Tooltip,
@@ -38,6 +42,7 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const { theme, setTheme } = useThemePreferences();
   const currentPath = location.pathname;
 
   // Use external state if provided (for fixed mode), otherwise use internal state
@@ -58,6 +63,27 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
 
   const handleLogoClick = () => {
     navigate('/');
+  };
+
+  const handleNotificationClick = () => {
+    navigate('/notifications');
+  };
+
+  const handleThemeToggle = () => {
+    const newTheme = theme === 'light' ? 'dark' : theme === 'dark' ? 'auto' : 'light';
+    setTheme(newTheme);
+  };
+
+  const getThemeIcon = () => {
+    if (theme === 'light') return Sun;
+    if (theme === 'dark') return Moon;
+    return Sun; // Default for auto mode
+  };
+
+  const getThemeTooltipText = () => {
+    if (theme === 'light') return 'Switch to Dark theme';
+    if (theme === 'dark') return 'Switch to Auto theme';
+    return 'Switch to Light theme';
   };
 
   const getUserDisplayName = () => {
@@ -179,8 +205,47 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
         </nav>
       </div>
 
-      {/* Bottom Section - Pin Toggle & User & Sign Out */}
+      {/* Bottom Section - Notifications, Theme Toggle, Pin Toggle & User & Sign Out */}
       <div className="border-t border-sidebar-border p-4 space-y-3 relative" style={{ overflow: 'visible', zIndex: 100 }}>
+        {/* Notification Bell */}
+        <div className="flex justify-start">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={handleNotificationClick}
+                className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50"
+                style={{ marginLeft: '8px' }}
+              >
+                <Bell className="w-4 h-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side={sidebarOpen ? "bottom" : "right"}>
+              <p>Notifications</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
+
+        {/* Theme Toggle */}
+        <div className="flex justify-start">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={handleThemeToggle}
+                className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50"
+                style={{ marginLeft: '8px' }}
+              >
+                {(() => {
+                  const ThemeIcon = getThemeIcon();
+                  return <ThemeIcon className="w-4 h-4" />;
+                })()}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side={sidebarOpen ? "bottom" : "right"}>
+              <p>{getThemeTooltipText()}</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
+
         {/* Pin Toggle Button */}
         <div className="flex justify-start">
           <Tooltip>
