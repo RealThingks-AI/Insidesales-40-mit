@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Settings, Upload, Download, Columns } from "lucide-react";
 import { Deal } from "@/types/deal";
+import { useDealsImportExport } from "@/hooks/useDealsImportExport";
 
 interface DealActionsDropdownProps {
   deals: Deal[];
@@ -27,6 +28,36 @@ export const DealActionsDropdown = ({
   onColumnCustomize,
   showColumns = false 
 }: DealActionsDropdownProps) => {
+  const { handleImport, handleExportAll, handleExportSelected } = useDealsImportExport({
+    onRefresh
+  });
+
+  const handleExportClick = () => {
+    if (selectedDeals.length > 0) {
+      const selectedIds = selectedDeals.map(deal => deal.id);
+      handleExportSelected(deals, selectedIds);
+    } else {
+      handleExportAll(deals);
+    }
+  };
+
+  const handleImportClick = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.csv';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        try {
+          await handleImport(file);
+        } catch (error) {
+          console.error('Import failed:', error);
+        }
+      }
+    };
+    input.click();
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -46,19 +77,7 @@ export const DealActionsDropdown = ({
       >
         <DropdownMenuItem 
           className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-sm"
-          onClick={() => {
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = '.csv';
-            input.onchange = (e) => {
-              const file = (e.target as HTMLInputElement).files?.[0];
-              if (file) {
-                // Handle file import logic here
-                console.log('Import file:', file);
-              }
-            };
-            input.click();
-          }}
+          onClick={handleImportClick}
         >
           <Upload className="w-4 h-4" />
           Import
@@ -66,13 +85,10 @@ export const DealActionsDropdown = ({
         
         <DropdownMenuItem 
           className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-accent hover:text-accent-foreground rounded-sm"
-          onClick={() => {
-            // Handle export logic here
-            console.log('Export deals:', selectedDeals.length > 0 ? selectedDeals : deals);
-          }}
+          onClick={handleExportClick}
         >
           <Download className="w-4 h-4" />
-          Export
+          Export {selectedDeals.length > 0 ? `(${selectedDeals.length} selected)` : 'All'}
         </DropdownMenuItem>
         
         {showColumns && onColumnCustomize && (
