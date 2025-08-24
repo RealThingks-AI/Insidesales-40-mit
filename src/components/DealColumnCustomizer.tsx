@@ -5,27 +5,27 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 
-export interface LeadColumnConfig {
+export interface DealColumnConfig {
   field: string;
   label: string;
   visible: boolean;
   order: number;
 }
 
-interface LeadColumnCustomizerProps {
+interface DealColumnCustomizerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  columns: LeadColumnConfig[];
-  onColumnsChange: (columns: LeadColumnConfig[]) => void;
+  columns: DealColumnConfig[];
+  onColumnsChange: (columns: DealColumnConfig[]) => void;
 }
 
-export const LeadColumnCustomizer = ({ 
+export const DealColumnCustomizer = ({ 
   open, 
   onOpenChange, 
   columns, 
   onColumnsChange 
-}: LeadColumnCustomizerProps) => {
-  const [localColumns, setLocalColumns] = useState<LeadColumnConfig[]>(columns);
+}: DealColumnCustomizerProps) => {
+  const [localColumns, setLocalColumns] = useState<DealColumnConfig[]>(columns);
 
   const handleVisibilityChange = (field: string, visible: boolean) => {
     const updatedColumns = localColumns.map(col => 
@@ -40,17 +40,22 @@ export const LeadColumnCustomizer = ({
   };
 
   const handleReset = () => {
-    const defaultColumns: LeadColumnConfig[] = [
-      { field: 'lead_name', label: 'Lead Name', visible: true, order: 0 },
-      { field: 'company_name', label: 'Company Name', visible: true, order: 1 },
-      { field: 'position', label: 'Position', visible: true, order: 2 },
-      { field: 'email', label: 'Email', visible: true, order: 3 },
-      { field: 'phone_no', label: 'Phone', visible: true, order: 4 },
-      { field: 'country', label: 'Region', visible: true, order: 5 },
-      { field: 'contact_owner', label: 'Lead Owner', visible: true, order: 6 },
-      { field: 'lead_status', label: 'Lead Status', visible: true, order: 7 },
-      { field: 'industry', label: 'Industry', visible: true, order: 8 },
-      { field: 'contact_source', label: 'Source', visible: true, order: 9 },
+    const defaultColumns: DealColumnConfig[] = [
+      { field: 'project_name', label: 'Project', visible: true, order: 0 },
+      { field: 'customer_name', label: 'Customer', visible: true, order: 1 },
+      { field: 'lead_name', label: 'Lead Name', visible: true, order: 2 },
+      { field: 'lead_owner', label: 'Lead Owner', visible: true, order: 3 },
+      { field: 'stage', label: 'Stage', visible: true, order: 4 },
+      { field: 'priority', label: 'Priority', visible: true, order: 5 },
+      { field: 'total_contract_value', label: 'Value', visible: true, order: 6 },
+      { field: 'probability', label: 'Probability', visible: true, order: 7 },
+      { field: 'expected_closing_date', label: 'Expected Close', visible: true, order: 8 },
+      { field: 'region', label: 'Region', visible: false, order: 9 },
+      { field: 'project_duration', label: 'Duration', visible: false, order: 10 },
+      { field: 'start_date', label: 'Start Date', visible: false, order: 11 },
+      { field: 'end_date', label: 'End Date', visible: false, order: 12 },
+      { field: 'proposal_due_date', label: 'Proposal Due', visible: false, order: 13 },
+      { field: 'total_revenue', label: 'Total Revenue', visible: false, order: 14 },
     ];
     setLocalColumns(defaultColumns);
   };
@@ -64,7 +69,7 @@ export const LeadColumnCustomizer = ({
         
         <div className="space-y-4">
           <div className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg">
-            <strong>Tip:</strong> Check/uncheck to show/hide columns in the lead table.
+            <strong>Tip:</strong> Check/uncheck to show/hide columns in the deal table.
           </div>
           
           <div className="space-y-2 max-h-[400px] overflow-y-auto p-1">

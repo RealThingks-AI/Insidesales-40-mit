@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,7 +8,8 @@ import { ListView } from "@/components/ListView";
 import { DealForm } from "@/components/DealForm";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Plus } from "lucide-react";
+import { Plus, LayoutGrid, List } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useCRUDAudit } from "@/hooks/useCRUDAudit";
 
 const DealsPage = () => {
@@ -35,6 +35,7 @@ const DealsPage = () => {
         .order('modified_at', { ascending: false });
 
       if (error) {
+        console.error('Supabase error fetching deals:', error);
         toast({
           title: "Error",
           description: "Failed to fetch deals",
@@ -45,6 +46,7 @@ const DealsPage = () => {
 
       setDeals((data || []) as unknown as Deal[]);
     } catch (error) {
+      console.error('Unexpected error fetching deals:', error);
       toast({
         title: "Error",
         description: "An unexpected error occurred",
@@ -64,9 +66,18 @@ const DealsPage = () => {
       // Get the existing deal for audit logging
       const existingDeal = deals.find(deal => deal.id === dealId);
       
+      // Ensure we have all required fields for the update
+      const updateData = {
+        ...updates,
+        modified_at: new Date().toISOString(),
+        modified_by: user?.id
+      };
+
+      console.log("Final update data:", updateData);
+
       const { data, error } = await supabase
         .from('deals')
-        .update({ ...updates, modified_at: new Date().toISOString() })
+        .update(updateData)
         .eq('id', dealId)
         .select()
         .single();
@@ -81,15 +92,16 @@ const DealsPage = () => {
       // Log update operation
       await logUpdate('deals', dealId, updates, existingDeal);
       
+      // Update local state
       setDeals(prev => prev.map(deal => 
-        deal.id === dealId ? { ...deal, ...updates } : deal
+        deal.id === dealId ? { ...deal, ...updateData } : deal
       ));
       
       toast({
         title: "Success",
         description: "Deal updated successfully",
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Update deal error:", error);
       toast({
         title: "Error",
@@ -102,19 +114,48 @@ const DealsPage = () => {
 
   const handleSaveDeal = async (dealData: Partial<Deal>) => {
     try {
+      console.log("=== SAVE DEAL DEBUG ===");
+      console.log("Is creating:", isCreating);
+      console.log("Deal data:", dealData);
+      
       if (isCreating) {
+        const insertData = { 
+          ...dealData, 
+          deal_name: dealData.project_name || dealData.deal_name || 'Untitled Deal',
+          created_by: user?.id, // Ensure created_by is set for RLS
+          modified_by: user?.id,
+          created_at: new Date().toISOString(),
+          modified_at: new Date().toISOString()
+        };
+        
+        console.log("Insert data:", insertData);
+
         const { data, error } = await supabase
           .from('deals')
-          .insert([{ 
-            ...dealData, 
-            deal_name: dealData.project_name || 'Untitled Deal',
-            created_by: user?.id,
-            modified_by: user?.id 
-          }])
+          .insert([insertData])
           .select()
           .single();
 
-        if (error) throw error;
+        if (error) {
+          console.error("Insert error:", error);
+          
+          // Check for RLS policy violation
+          if (error.message?.includes('row-level security') || 
+              error.message?.includes('permission') ||
+              error.code === 'PGRST301' || 
+              error.code === '42501') {
+            toast({
+              title: "Permission Denied",
+              description: "You don't have permission to create deals.",
+              variant: "destructive",
+            });
+            return;
+          }
+          
+          throw error;
+        }
+
+        console.log("Insert successful:", data);
 
         // Log create operation
         await logCreate('deals', data.id, dealData);
@@ -123,15 +164,17 @@ const DealsPage = () => {
       } else if (selectedDeal) {
         const updateData = {
           ...dealData,
-          deal_name: dealData.project_name || selectedDeal.project_name || 'Untitled Deal',
+          deal_name: dealData.project_name || selectedDeal.project_name || selectedDeal.deal_name || 'Untitled Deal',
           modified_at: new Date().toISOString(),
           modified_by: user?.id
         };
         
+        console.log("Update data for existing deal:", updateData);
+        
         await handleUpdateDeal(selectedDeal.id, updateData);
         await fetchDeals();
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error in handleSaveDeal:", error);
       throw error;
     }
@@ -139,23 +182,59 @@ const DealsPage = () => {
 
   const handleDeleteDeals = async (dealIds: string[]) => {
     try {
-      const { error } = await supabase
+      console.log("Attempting to delete deals:", dealIds);
+
+      // Request the IDs of the rows that were actually deleted (RLS will filter)
+      const { data, error } = await supabase
         .from('deals')
         .delete()
-        .in('id', dealIds);
+        .in('id', dealIds)
+        .select('id');
 
-      if (error) throw error;
+      if (error) {
+        console.error("Delete error:", error);
+        toast({
+          title: "Error",
+          description: "Failed to delete deals",
+          variant: "destructive",
+        });
+        return;
+      }
 
-      // Log bulk delete operation
-      await logBulkDelete('deals', dealIds.length, dealIds);
+      const deletedIds = (data || []).map((row: { id: string }) => row.id);
+      const notDeleted = dealIds.filter(id => !deletedIds.includes(id));
 
-      setDeals(prev => prev.filter(deal => !dealIds.includes(deal.id)));
-      
-      toast({
-        title: "Success",
-        description: `Deleted ${dealIds.length} deal(s)`,
-      });
+      console.log("Deleted IDs:", deletedIds);
+      console.log("Not deleted due to RLS/permissions:", notDeleted);
+
+      // Update local state only for deals that were actually deleted
+      if (deletedIds.length > 0) {
+        setDeals(prev => prev.filter(deal => !deletedIds.includes(deal.id)));
+
+        // Log bulk delete with only the successfully deleted IDs
+        await logBulkDelete('deals', deletedIds.length, deletedIds);
+
+        toast({
+          title: "Success",
+          description: `Deleted ${deletedIds.length} deal(s)`,
+        });
+      }
+
+      // Show a clear permission message for deals that couldn't be deleted
+      if (notDeleted.length > 0) {
+        toast({
+          title: "Permission Denied",
+          description: `You don't have permission to delete ${notDeleted.length} deal(s).`,
+          variant: "destructive",
+        });
+      }
+
+      // If nothing was deleted at all, ensure user is informed
+      if (deletedIds.length === 0 && notDeleted.length === dealIds.length) {
+        console.warn("No deals were deleted due to RLS. User may be non-owner/non-admin.");
+      }
     } catch (error) {
+      console.error("Unexpected delete error:", error);
       toast({
         title: "Error",
         description: "Failed to delete deals",
@@ -268,30 +347,55 @@ const DealsPage = () => {
             </div>
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 flex-shrink-0">
               <div className="bg-muted rounded-lg p-1 flex">
-                <Button
-                  variant={activeView === 'kanban' ? 'default' : 'ghost'}
-                  size="sm"
-                  onClick={() => setActiveView('kanban')}
-                  className={activeView === 'kanban' ? 'bg-primary text-primary-foreground' : ''}
-                >
-                  Kanban
-                </Button>
-                <Button
-                  variant={activeView === 'list' ? 'default' : 'ghost'}
-                  size="sm"
-                  onClick={() => setActiveView('list')}
-                  className={activeView === 'list' ? 'bg-primary text-primary-foreground' : ''}
-                >
-                  List
-                </Button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant={activeView === 'kanban' ? 'default' : 'outline'}
+                        size="icon"
+                        onClick={() => setActiveView('kanban')}
+                      >
+                        <LayoutGrid className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Kanban View</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant={activeView === 'list' ? 'default' : 'outline'}
+                        size="icon"
+                        onClick={() => setActiveView('list')}
+                      >
+                        <List className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>List View</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
-              <Button 
-                onClick={() => handleCreateDeal('Lead')}
-                className="bg-primary hover:bg-primary/90 text-primary-foreground"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                <span className="hidden sm:inline">New Deal</span>
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="outline"
+                      size="icon"
+                      onClick={() => handleCreateDeal('Lead')}
+                    >
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>New Deal</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
           </div>
         </div>
