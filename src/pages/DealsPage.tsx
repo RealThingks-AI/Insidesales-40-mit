@@ -382,19 +382,6 @@ const DealsPage = () => {
                 </TooltipProvider>
               </div>
 
-              {/* Actions icon-only button between view toggle and Add Deal */}
-              <DealActionsDropdown
-                deals={deals}
-                onImport={handleImportDeals}
-                onRefresh={fetchDeals}
-                selectedDeals={[]}
-                showColumns={activeView === 'list'}
-                onColumnCustomize={() => {
-                  // Broadcast to open Columns UI in ListView if applicable
-                  window.dispatchEvent(new CustomEvent('open-deal-columns'));
-                }}
-              />
-
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
