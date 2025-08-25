@@ -20,21 +20,18 @@ const Settings = () => {
 
       {/* Settings Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-fit grid-cols-3 gap-1 mx-auto">
-          <TabsTrigger value="user-management" className="flex items-center gap-2 px-4">
+        <TabsList className="grid w-full grid-cols-3 gap-1">
+          <TabsTrigger value="user-management" className="flex items-center gap-2">
             <Users className="w-4 h-4" />
-            <span className="hidden sm:inline whitespace-nowrap">User Management</span>
-            <span className="sm:hidden">Users</span>
+            <span className="hidden sm:inline">User Management</span>
           </TabsTrigger>
-          <TabsTrigger value="security" className="flex items-center gap-2 px-4">
+          <TabsTrigger value="security" className="flex items-center gap-2">
             <Shield className="w-4 h-4" />
-            <span className="hidden sm:inline whitespace-nowrap">Security</span>
-            <span className="sm:hidden">Security</span>
+            <span className="hidden sm:inline">Security</span>
           </TabsTrigger>
-          <TabsTrigger value="audit-logs" className="flex items-center gap-2 px-4">
+          <TabsTrigger value="audit-logs" className="flex items-center gap-2">
             <FileText className="w-4 h-4" />
-            <span className="hidden sm:inline whitespace-nowrap">Audit & Logs</span>
-            <span className="sm:hidden">Logs</span>
+            <span className="hidden sm:inline">Audit & Logs</span>
           </TabsTrigger>
         </TabsList>
 
