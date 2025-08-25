@@ -21,8 +21,6 @@ interface ListViewProps {
   onUpdateDeal: (dealId: string, updates: Partial<Deal>) => void;
   onDeleteDeals: (dealIds: string[]) => void;
   onImportDeals: (deals: Partial<Deal>[]) => void;
-  selectedDeals: Deal[];
-  onSelectedDealsChange: (deals: Deal[]) => void;
 }
 
 export const ListView = ({ 
@@ -30,9 +28,7 @@ export const ListView = ({
   onDealClick, 
   onUpdateDeal, 
   onDeleteDeals, 
-  onImportDeals,
-  selectedDeals,
-  onSelectedDealsChange
+  onImportDeals 
 }: ListViewProps) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [filters, setFilters] = useState<AdvancedFilterState>({
@@ -47,7 +43,7 @@ export const ListView = ({
   });
   const [sortBy, setSortBy] = useState<string>("modified_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
-  const [selectedDealsInternal, setSelectedDealsInternal] = useState<Set<string>>(new Set());
+  const [selectedDeals, setSelectedDeals] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(50);
   
@@ -76,6 +72,7 @@ export const ListView = ({
     { field: 'total_revenue', label: 'Total Revenue', visible: false, order: 14 },
   ]);
 
+  // Column width state
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
     'project_name': 200,
     'customer_name': 150,
@@ -94,18 +91,13 @@ export const ListView = ({
     'total_revenue': 120,
   });
 
+  // Resize state
   const [isResizing, setIsResizing] = useState<string | null>(null);
   const [startX, setStartX] = useState(0);
   const [startWidth, setStartWidth] = useState(0);
   const tableRef = useRef<HTMLTableElement>(null);
 
   const { toast } = useToast();
-
-  // Sync internal selection with parent state
-  useEffect(() => {
-    const selectedIds = new Set(selectedDeals.map(deal => deal.id));
-    setSelectedDealsInternal(selectedIds);
-  }, [selectedDeals]);
 
   const formatCurrency = (amount: number | undefined, currency: string = 'EUR') => {
     if (!amount) return '-';
@@ -122,6 +114,7 @@ export const ListView = ({
     }
   };
 
+  // Handle column resize
   const handleMouseDown = (e: React.MouseEvent, field: string) => {
     setIsResizing(field);
     setStartX(e.clientX);
@@ -133,7 +126,7 @@ export const ListView = ({
     if (!isResizing) return;
 
     const deltaX = e.clientX - startX;
-    const newWidth = Math.max(80, startWidth + deltaX);
+    const newWidth = Math.max(80, startWidth + deltaX); // Minimum width of 80px
     
     setColumnWidths(prev => ({
       ...prev,
@@ -143,11 +136,13 @@ export const ListView = ({
 
   const handleMouseUp = () => {
     if (isResizing) {
+      // Save to localStorage
       localStorage.setItem('deals-column-widths', JSON.stringify(columnWidths));
       setIsResizing(null);
     }
   };
 
+  // Mouse event listeners
   useEffect(() => {
     if (isResizing) {
       document.addEventListener('mousemove', handleMouseMove);
@@ -159,6 +154,7 @@ export const ListView = ({
     }
   }, [isResizing, startX, startWidth, columnWidths]);
 
+  // Load column widths from localStorage
   useEffect(() => {
     const savedWidths = localStorage.getItem('deals-column-widths');
     if (savedWidths) {
@@ -173,44 +169,36 @@ export const ListView = ({
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      const selectedDealObjects = filteredAndSortedDeals;
-      setSelectedDealsInternal(new Set(selectedDealObjects.map(deal => deal.id)));
-      onSelectedDealsChange(selectedDealObjects);
+      setSelectedDeals(new Set(filteredAndSortedDeals.map(deal => deal.id)));
     } else {
-      setSelectedDealsInternal(new Set());
-      onSelectedDealsChange([]);
+      setSelectedDeals(new Set());
     }
   };
 
   const handleSelectDeal = (dealId: string, checked: boolean) => {
-    const newSelectedIds = new Set(selectedDealsInternal);
+    const newSelected = new Set(selectedDeals);
     if (checked) {
-      newSelectedIds.add(dealId);
+      newSelected.add(dealId);
     } else {
-      newSelectedIds.delete(dealId);
+      newSelected.delete(dealId);
     }
-    setSelectedDealsInternal(newSelectedIds);
-    
-    // Update parent with actual deal objects
-    const selectedDealObjects = deals.filter(deal => newSelectedIds.has(deal.id));
-    onSelectedDealsChange(selectedDealObjects);
+    setSelectedDeals(newSelected);
   };
 
   const handleBulkDelete = () => {
-    if (selectedDealsInternal.size === 0) return;
+    if (selectedDeals.size === 0) return;
     
-    onDeleteDeals(Array.from(selectedDealsInternal));
-    setSelectedDealsInternal(new Set());
-    onSelectedDealsChange([]);
+    onDeleteDeals(Array.from(selectedDeals));
+    setSelectedDeals(new Set());
     
     toast({
       title: "Deals deleted",
-      description: `Successfully deleted ${selectedDealsInternal.size} deals`,
+      description: `Successfully deleted ${selectedDeals.size} deals`,
     });
   };
 
   const handleBulkExport = () => {
-    const selectedDealObjects = deals.filter(deal => selectedDealsInternal.has(deal.id));
+    const selectedDealObjects = deals.filter(deal => selectedDeals.has(deal.id));
     // Export logic handled by DealActionsDropdown
   };
 
@@ -247,6 +235,7 @@ export const ListView = ({
     .filter(col => col.visible)
     .sort((a, b) => a.order - b.order);
 
+  // Generate available options for multi-select filters
   const availableOptions = useMemo(() => {
     const regions = Array.from(new Set(deals.map(d => d.region).filter(Boolean)));
     const leadOwners = Array.from(new Set(deals.map(d => d.lead_owner).filter(Boolean)));
@@ -283,6 +272,7 @@ export const ListView = ({
 
   const filteredAndSortedDeals = deals
     .filter(deal => {
+      // Combine search from both searchTerm and filters.searchTerm
       const allSearchTerms = [searchTerm, filters.searchTerm].filter(Boolean).join(' ').toLowerCase();
       const matchesSearch = !allSearchTerms || 
         deal.deal_name?.toLowerCase().includes(allSearchTerms) ||
@@ -291,6 +281,7 @@ export const ListView = ({
         deal.customer_name?.toLowerCase().includes(allSearchTerms) ||
         deal.region?.toLowerCase().includes(allSearchTerms);
       
+      // Apply multi-select filters
       const matchesStages = filters.stages.length === 0 || filters.stages.includes(deal.stage);
       const matchesRegions = filters.regions.length === 0 || filters.regions.includes(deal.region || '');
       const matchesLeadOwners = filters.leadOwners.length === 0 || filters.leadOwners.includes(deal.lead_owner || '');
@@ -298,6 +289,7 @@ export const ListView = ({
       const matchesProbabilities = filters.probabilities.length === 0 || filters.probabilities.includes(String(deal.probability || ''));
       const matchesHandoffStatuses = filters.handoffStatuses.length === 0 || filters.handoffStatuses.includes(deal.handoff_status || '');
       
+      // Probability range filter
       const dealProbability = deal.probability || 0;
       const matchesProbabilityRange = dealProbability >= filters.probabilityRange[0] && dealProbability <= filters.probabilityRange[1];
       
@@ -308,6 +300,7 @@ export const ListView = ({
       let aValue: any;
       let bValue: any;
 
+      // Get the values for the sort field
       if (['priority', 'probability', 'project_duration'].includes(sortBy)) {
         aValue = a[sortBy as keyof Deal] || 0;
         bValue = b[sortBy as keyof Deal] || 0;
@@ -320,6 +313,7 @@ export const ListView = ({
         aValue = new Date(typeof aDateValue === 'string' ? aDateValue : 0);
         bValue = new Date(typeof bDateValue === 'string' ? bDateValue : 0);
       } else {
+        // String fields
         aValue = String(a[sortBy as keyof Deal] || '').toLowerCase();
         bValue = String(b[sortBy as keyof Deal] || '').toLowerCase();
       }
@@ -331,10 +325,12 @@ export const ListView = ({
       }
     });
 
+  // Pagination
   const totalPages = Math.ceil(filteredAndSortedDeals.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedDeals = filteredAndSortedDeals.slice(startIndex, startIndex + itemsPerPage);
 
+  // Reset to first page when filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [filters, searchTerm]);
@@ -369,7 +365,8 @@ export const ListView = ({
   const activeFiltersCount = getActiveFiltersCount();
   const hasActiveFilters = activeFiltersCount > 0 || searchTerm;
 
-  const selectedDealObjects = deals.filter(deal => selectedDealsInternal.has(deal.id));
+  // Get selected deal objects for export
+  const selectedDealObjects = deals.filter(deal => selectedDeals.has(deal.id));
 
   const handleActionClick = (deal: Deal) => {
     setSelectedDealForActions(deal);
@@ -433,7 +430,7 @@ export const ListView = ({
             <TableRow className="hover:bg-primary/10 transition-colors border-b border-primary/20">
               <TableHead className="w-12 min-w-12 bg-primary/10 border-r border-primary/20">
                 <Checkbox
-                  checked={selectedDealsInternal.size === paginatedDeals.length && paginatedDeals.length > 0}
+                  checked={selectedDeals.size === paginatedDeals.length && paginatedDeals.length > 0}
                   onCheckedChange={handleSelectAll}
                   className="transition-all hover:scale-110"
                 />
@@ -486,16 +483,16 @@ export const ListView = ({
                 <TableRow 
                   key={deal.id} 
                   className={`hover:bg-primary/5 transition-all duration-200 hover:shadow-sm ${
-                    selectedDealsInternal.has(deal.id) ? 'bg-primary/10 shadow-sm' : ''
+                    selectedDeals.has(deal.id) ? 'bg-primary/10 shadow-sm' : ''
                   }`}
                   style={{ 
-                    background: selectedDealsInternal.has(deal.id) ? 'hsl(var(--primary) / 0.1)' : undefined,
-                    borderLeft: selectedDealsInternal.has(deal.id) ? '3px solid hsl(var(--primary))' : undefined 
+                    background: selectedDeals.has(deal.id) ? 'hsl(var(--primary) / 0.1)' : undefined,
+                    borderLeft: selectedDeals.has(deal.id) ? '3px solid hsl(var(--primary))' : undefined 
                   }}
                 >
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <Checkbox
-                      checked={selectedDealsInternal.has(deal.id)}
+                      checked={selectedDeals.has(deal.id)}
                       onCheckedChange={(checked) => handleSelectDeal(deal.id, Boolean(checked))}
                       className="transition-all hover:scale-110"
                     />
@@ -565,15 +562,12 @@ export const ListView = ({
       </div>
 
       <div className="flex-shrink-0 bg-background border-t">
-        {selectedDealsInternal.size > 0 && (
+        {selectedDeals.size > 0 && (
           <BulkActionsBar
-            selectedCount={selectedDealsInternal.size}
+            selectedCount={selectedDeals.size}
             onDelete={handleBulkDelete}
             onExport={handleBulkExport}
-            onClearSelection={() => {
-              setSelectedDealsInternal(new Set());
-              onSelectedDealsChange([]);
-            }}
+            onClearSelection={() => setSelectedDeals(new Set())}
           />
         )}
 

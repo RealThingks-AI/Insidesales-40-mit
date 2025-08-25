@@ -12,8 +12,6 @@ interface DashboardContentProps {
   onDeleteDeals: (dealIds: string[]) => Promise<void>;
   onImportDeals: (importedDeals: (Partial<Deal> & { shouldUpdate?: boolean })[]) => Promise<void>;
   onRefresh: () => Promise<void>;
-  selectedDeals: Deal[];
-  onSelectedDealsChange: (deals: Deal[]) => void;
 }
 
 export const DashboardContent = ({
@@ -24,9 +22,7 @@ export const DashboardContent = ({
   onCreateDeal,
   onDeleteDeals,
   onImportDeals,
-  onRefresh,
-  selectedDeals,
-  onSelectedDealsChange
+  onRefresh
 }: DashboardContentProps) => {
   return (
     <div className="flex-1">
@@ -50,8 +46,6 @@ export const DashboardContent = ({
             onUpdateDeal={onUpdateDeal}
             onDeleteDeals={onDeleteDeals}
             onImportDeals={onImportDeals}
-            selectedDeals={selectedDeals}
-            onSelectedDealsChange={onSelectedDealsChange}
           />
         </div>
       )}

@@ -21,7 +21,6 @@ const Index = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [initialStage, setInitialStage] = useState<DealStage>('Lead');
   const [activeView, setActiveView] = useState<'kanban' | 'list'>('kanban');
-  const [selectedDeals, setSelectedDeals] = useState<Deal[]>([]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -233,10 +232,6 @@ const Index = () => {
     navigate("/auth");
   };
 
-  const handleSelectedDealsChange = (deals: Deal[]) => {
-    setSelectedDeals(deals);
-  };
-
   if (authLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -272,8 +267,6 @@ const Index = () => {
         onDeleteDeals={handleDeleteDeals}
         onImportDeals={handleImportDeals}
         onRefresh={fetchDeals}
-        selectedDeals={selectedDeals}
-        onSelectedDealsChange={handleSelectedDealsChange}
       />
 
       <DealForm
