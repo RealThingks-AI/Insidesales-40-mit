@@ -114,10 +114,12 @@ export const KanbanBoard = ({
   };
 
   const getVisibleStages = () => {
+    const leadDeals = getDealsByStage('Lead');
     const lostDeals = getDealsByStage('Lost');
     const droppedDeals = getDealsByStage('Dropped');
     
     return DEAL_STAGES.filter(stage => {
+      if (stage === 'Lead') return leadDeals.length > 0;
       if (stage === 'Lost') return lostDeals.length > 0;
       if (stage === 'Dropped') return droppedDeals.length > 0;
       return true;
