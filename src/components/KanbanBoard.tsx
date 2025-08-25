@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Plus, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { BulkActionsBar } from "./BulkActionsBar";
-import { ImportExportBar } from "./ImportExportBar";
 import { DealsAdvancedFilter, AdvancedFilterState } from "./DealsAdvancedFilter";
 
 interface KanbanBoardProps {
@@ -291,16 +290,6 @@ export const KanbanBoard = ({
                 </div>
               )}
             </div>
-          </div>
-          
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <ImportExportBar
-              deals={deals}
-              onImport={onImportDeals}
-              onExport={() => {}}
-              selectedDeals={selectedDealObjects}
-              onRefresh={onRefresh}
-            />
           </div>
         </div>
       </div>
