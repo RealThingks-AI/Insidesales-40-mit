@@ -63,11 +63,10 @@ export const DealActionsDropdown = ({
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
-          size="sm"
-          className="flex items-center gap-2 h-9 px-3 hover:bg-accent hover:text-accent-foreground"
+          size="icon"
+          className="h-9 w-9"
         >
           <Settings className="w-4 h-4" />
-          Actions
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent 
