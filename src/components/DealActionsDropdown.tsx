@@ -97,7 +97,7 @@ export const DealActionsDropdown = ({
             onClick={onColumnCustomize}
           >
             <Columns className="w-4 h-4" />
-            Customize Columns
+            Columns
           </DropdownMenuItem>
         )}
       </DropdownMenuContent>
