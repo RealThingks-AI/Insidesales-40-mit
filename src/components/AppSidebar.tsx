@@ -1,4 +1,3 @@
-
 import { 
   Home, 
   Users, 
@@ -70,20 +69,16 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
   };
 
   const handleThemeToggle = () => {
-    const newTheme = theme === 'light' ? 'dark' : theme === 'dark' ? 'auto' : 'light';
+    const newTheme = theme === 'light' ? 'dark' : 'light';
     setTheme(newTheme);
   };
 
   const getThemeIcon = () => {
-    if (theme === 'light') return Sun;
-    if (theme === 'dark') return Moon;
-    return Sun; // Default for auto mode
+    return theme === 'light' ? Sun : Moon;
   };
 
   const getThemeTooltipText = () => {
-    if (theme === 'light') return 'Switch to Dark theme';
-    if (theme === 'dark') return 'Switch to Auto theme';
-    return 'Switch to Light theme';
+    return theme === 'light' ? 'Switch to Dark theme' : 'Switch to Light theme';
   };
 
   const getUserDisplayName = () => {
