@@ -242,114 +242,105 @@ const SecuritySettings = () => {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6 max-w-2xl">
       {/* Session Management */}
-      <Card className="shadow-sm">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Shield className="w-4 h-4" />
-            Session Management
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Manage and monitor your active sessions across different devices
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-3 pt-0">
-          <div className="space-y-2">
-            {sessions.map((session) => (
-              <div key={session.id} className="flex items-center justify-between p-3 border rounded-lg bg-muted/30">
-                <div className="flex items-center gap-3">
-                  <Smartphone className="w-4 h-4 text-muted-foreground" />
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm">{session.device}</span>
-                      {session.current && (
-                        <Badge variant="secondary" className="text-xs px-2 py-0">
-                          Current
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {session.location} • {session.lastActive}
-                    </div>
+      <div className="bg-white rounded-lg border border-border p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Shield className="w-4 h-4" />
+          <h3 className="font-medium text-sm">Session Management</h3>
+        </div>
+        <p className="text-xs text-muted-foreground mb-4">
+          Manage and monitor your active sessions across different devices
+        </p>
+        
+        <div className="space-y-2">
+          {sessions.map((session) => (
+            <div key={session.id} className="flex items-center justify-between p-3 border border-border rounded-md bg-muted/20">
+              <div className="flex items-center gap-3">
+                <Smartphone className="w-4 h-4 text-muted-foreground" />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{session.device}</span>
+                    {session.current && (
+                      <Badge variant="secondary" className="text-xs px-1.5 py-0.5">
+                        Current
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {session.location} • {session.lastActive}
                   </div>
                 </div>
-                {!session.current && (
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={() => handleEndSession(session.id)}
-                    className="flex items-center gap-2 text-xs px-3 py-1 h-7"
-                  >
-                    <LogOut className="w-3 h-3" />
-                    End Session
-                  </Button>
-                )}
               </div>
-            ))}
+              {!session.current && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => handleEndSession(session.id)}
+                  className="text-xs px-2 py-1 h-6"
+                >
+                  End Session
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {sessions.filter(s => !s.current).length > 0 && (
+          <Button 
+            variant="destructive" 
+            onClick={handleEndAllSessions}
+            className="mt-4 text-sm px-4 py-2 h-8"
+          >
+            End All Other Sessions
+          </Button>
+        )}
+      </div>
+
+      {/* Change Password */}
+      <div className="bg-white rounded-lg border border-border p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Key className="w-4 h-4" />
+          <h3 className="font-medium text-sm">Change Password</h3>
+        </div>
+        <p className="text-xs text-muted-foreground mb-4">
+          Update your password to keep your account secure
+        </p>
+        
+        <form onSubmit={handlePasswordChange} className="space-y-3">
+          <div>
+            <Label htmlFor="newPassword" className="text-xs text-muted-foreground">New Password</Label>
+            <Input
+              id="newPassword"
+              type="password"
+              value={passwordData.newPassword}
+              onChange={(e) => setPasswordData(prev => ({ ...prev, newPassword: e.target.value }))}
+              placeholder="Enter new password"
+              required
+              className="mt-1 h-8 text-sm"
+            />
           </div>
-
-          {sessions.filter(s => !s.current).length > 0 && (
-            <div className="pt-2 border-t">
-              <Button 
-                variant="destructive" 
-                onClick={handleEndAllSessions}
-                className="w-full sm:w-auto text-sm h-8"
-              >
-                End All Other Sessions
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Password Change */}
-      <Card className="shadow-sm">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Key className="w-4 h-4" />
-            Change Password
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Update your password to keep your account secure
-          </p>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <form onSubmit={handlePasswordChange} className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="newPassword" className="text-sm">New Password</Label>
-              <Input
-                id="newPassword"
-                type="password"
-                value={passwordData.newPassword}
-                onChange={(e) => setPasswordData(prev => ({ ...prev, newPassword: e.target.value }))}
-                placeholder="Enter new password"
-                required
-                className="h-8 text-sm"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="confirmPassword" className="text-sm">Confirm New Password</Label>
-              <Input
-                id="confirmPassword"
-                type="password"
-                value={passwordData.confirmPassword}
-                onChange={(e) => setPasswordData(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                placeholder="Confirm new password"
-                required
-                className="h-8 text-sm"
-              />
-            </div>
-            <Button
-              type="submit"
-              disabled={isChangingPassword || !passwordData.newPassword || !passwordData.confirmPassword}
-              className="w-full sm:w-auto text-sm h-8"
-            >
-              {isChangingPassword ? "Updating..." : "Update Password"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+          <div>
+            <Label htmlFor="confirmPassword" className="text-xs text-muted-foreground">Confirm New Password</Label>
+            <Input
+              id="confirmPassword"
+              type="password"
+              value={passwordData.confirmPassword}
+              onChange={(e) => setPasswordData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+              placeholder="Confirm new password"
+              required
+              className="mt-1 h-8 text-sm"
+            />
+          </div>
+          <Button
+            type="submit"
+            disabled={isChangingPassword || !passwordData.newPassword || !passwordData.confirmPassword}
+            className="text-sm px-4 py-2 h-8"
+          >
+            {isChangingPassword ? "Updating..." : "Update Password"}
+          </Button>
+        </form>
+      </div>
     </div>
   );
 };
