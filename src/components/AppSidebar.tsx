@@ -1,3 +1,4 @@
+
 import { 
   Home, 
   Users, 
@@ -99,9 +100,9 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
         isFixed ? 'relative' : ''
       }`}
       style={{ 
-        width: sidebarOpen ? '220px' : '60px',
-        minWidth: sidebarOpen ? '220px' : '60px',
-        maxWidth: sidebarOpen ? '220px' : '60px',
+        width: sidebarOpen ? '240px' : '72px',
+        minWidth: sidebarOpen ? '240px' : '72px',
+        maxWidth: sidebarOpen ? '240px' : '72px',
         overflow: 'visible'
       }}
     >
@@ -126,7 +127,7 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
 
       {/* Menu Items */}
       <div className="flex-1 py-4">
-        <nav className="space-y-1 px-2">
+        <nav className="space-y-2 px-3">
           {menuItems.map((item) => {
             const active = isActive(item.url);
             const menuButton = (
@@ -140,18 +141,19 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
                   }
                 `}
                 style={{ 
-                  paddingTop: '10px',
-                  paddingBottom: '10px',
-                  paddingLeft: '16px',
-                  paddingRight: '16px',
-                  minHeight: '44px',
+                  paddingTop: '12px',
+                  paddingBottom: '12px',
+                  paddingLeft: sidebarOpen ? '16px' : '0px',
+                  paddingRight: sidebarOpen ? '16px' : '0px',
+                  minHeight: '48px',
                   fontFamily: 'Inter, system-ui, sans-serif',
                   fontSize: '15px',
-                  fontWeight: '500'
+                  fontWeight: '500',
+                  justifyContent: sidebarOpen ? 'flex-start' : 'center'
                 }}
               >
                 <div 
-                  className="flex items-center justify-start"
+                  className="flex items-center justify-center flex-shrink-0"
                   style={{ 
                     width: '20px',
                     height: '20px',
@@ -203,15 +205,14 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
       {/* Bottom Section - Notifications, Theme Toggle, Pin Toggle & User & Sign Out */}
       <div className="border-t border-sidebar-border p-4 space-y-3 relative" style={{ overflow: 'visible', zIndex: 100 }}>
         {/* Notification Bell */}
-        <div className="flex justify-start">
+        <div className="flex justify-center">
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 onClick={handleNotificationClick}
-                className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50"
-                style={{ marginLeft: '8px' }}
+                className="flex items-center justify-center w-10 h-10 rounded-lg transition-colors text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50"
               >
-                <Bell className="w-4 h-4" />
+                <Bell className="w-5 h-5" />
               </button>
             </TooltipTrigger>
             <TooltipContent side={sidebarOpen ? "bottom" : "right"}>
@@ -221,17 +222,16 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
         </div>
 
         {/* Theme Toggle */}
-        <div className="flex justify-start">
+        <div className="flex justify-center">
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 onClick={handleThemeToggle}
-                className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50"
-                style={{ marginLeft: '8px' }}
+                className="flex items-center justify-center w-10 h-10 rounded-lg transition-colors text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50"
               >
                 {(() => {
                   const ThemeIcon = getThemeIcon();
-                  return <ThemeIcon className="w-4 h-4" />;
+                  return <ThemeIcon className="w-5 h-5" />;
                 })()}
               </button>
             </TooltipTrigger>
@@ -242,15 +242,14 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
         </div>
 
         {/* Pin Toggle Button */}
-        <div className="flex justify-start">
+        <div className="flex justify-center">
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 onClick={togglePin}
-                className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50"
-                style={{ marginLeft: '8px' }}
+                className="flex items-center justify-center w-10 h-10 rounded-lg transition-colors text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50"
               >
-                {sidebarOpen ? <Pin className="w-4 h-4" /> : <PinOff className="w-4 h-4" />}
+                {sidebarOpen ? <Pin className="w-5 h-5" /> : <PinOff className="w-5 h-5" />}
               </button>
             </TooltipTrigger>
             <TooltipContent side={sidebarOpen ? "bottom" : "right"}>
@@ -265,13 +264,7 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
             <TooltipTrigger asChild>
               <button
                 onClick={handleSignOut}
-                className="flex items-center justify-center text-sidebar-foreground hover:text-sidebar-primary hover:bg-sidebar-accent/50 rounded-lg transition-colors"
-                style={{ 
-                  width: '40px',
-                  height: '40px',
-                  minWidth: '40px',
-                  marginLeft: '6px'
-                }}
+                className="flex items-center justify-center text-sidebar-foreground hover:text-sidebar-primary hover:bg-sidebar-accent/50 rounded-lg transition-colors w-10 h-10"
               >
                 <LogOut className="w-5 h-5" />
               </button>
