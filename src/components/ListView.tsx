@@ -12,6 +12,7 @@ import { DealColumnCustomizer, DealColumnConfig } from "./DealColumnCustomizer";
 import { BulkActionsBar } from "./BulkActionsBar";
 import { DealsAdvancedFilter, AdvancedFilterState } from "./DealsAdvancedFilter";
 import { DealActionItemsModal } from "./DealActionItemsModal";
+import { DealActionsDropdown } from "./DealActionsDropdown";
 import { useToast } from "@/hooks/use-toast";
 
 interface ListViewProps {
@@ -411,7 +412,14 @@ export const ListView = ({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            
+            <DealActionsDropdown
+              deals={deals}
+              onImport={onImportDeals}
+              onRefresh={() => {}}
+              selectedDeals={selectedDealObjects}
+              onColumnCustomize={() => setColumnCustomizerOpen(true)}
+              showColumns={true}
+            />
           </div>
         </div>
       </div>
