@@ -71,7 +71,7 @@ export const DealActionsDropdown = ({
       </DropdownMenuTrigger>
       <DropdownMenuContent 
         align="end" 
-        className="w-56 bg-popover border shadow-md rounded-md p-1"
+        className="w-56 bg-popover border shadow-md rounded-md p-1 z-50"
         sideOffset={4}
       >
         <DropdownMenuItem 

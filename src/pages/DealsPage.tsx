@@ -26,6 +26,7 @@ const DealsPage = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [initialStage, setInitialStage] = useState<DealStage>('Lead');
   const [activeView, setActiveView] = useState<'kanban' | 'list'>('list');
+  const [selectedDeals, setSelectedDeals] = useState<Deal[]>([]);
 
   const fetchDeals = async () => {
     try {
@@ -382,12 +383,12 @@ const DealsPage = () => {
                 </TooltipProvider>
               </div>
 
-              {/* Actions icon-only button between view toggle and Add Deal */}
+              {/* Single Actions dropdown between view toggle and Add Deal */}
               <DealActionsDropdown
                 deals={deals}
                 onImport={handleImportDeals}
                 onRefresh={fetchDeals}
-                selectedDeals={[]}
+                selectedDeals={selectedDeals}
                 showColumns={activeView === 'list'}
                 onColumnCustomize={() => {
                   // Broadcast to open Columns UI in ListView if applicable
@@ -435,6 +436,8 @@ const DealsPage = () => {
             onUpdateDeal={handleUpdateDeal}
             onDeleteDeals={handleDeleteDeals}
             onImportDeals={handleImportDeals}
+            selectedDeals={selectedDeals}
+            onSelectedDealsChange={setSelectedDeals}
           />
         )}
       </div>
