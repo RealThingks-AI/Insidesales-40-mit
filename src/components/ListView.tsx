@@ -1,637 +1,416 @@
-import { useState, useEffect, useMemo, useRef } from "react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+import React, { useState, useEffect, useMemo } from 'react';
+import { Deal } from "@/types/deal";
+import { DealColumnCustomizer } from "./DealColumnCustomizer";
+import { DealsAdvancedFilter } from "./DealsAdvancedFilter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Deal, DealStage, DEAL_STAGES, STAGE_COLORS } from "@/types/deal";
-import { Search, Filter, X, Edit, Trash2, ArrowUp, ArrowDown, CheckSquare } from "lucide-react";
-import { format } from "date-fns";
+import { Badge } from "@/components/ui/badge";
 import { InlineEditCell } from "./InlineEditCell";
-import { DealColumnCustomizer, DealColumnConfig } from "./DealColumnCustomizer";
 import { BulkActionsBar } from "./BulkActionsBar";
-import { DealsAdvancedFilter, AdvancedFilterState } from "./DealsAdvancedFilter";
-import { DealActionItemsModal } from "./DealActionItemsModal";
-import { DealActionsDropdown } from "./DealActionsDropdown";
+import { 
+  Search, 
+  Filter, 
+  ChevronUp, 
+  ChevronDown, 
+  Columns,
+  X
+} from "lucide-react";
+import { formatDistanceToNow } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
 
 interface ListViewProps {
   deals: Deal[];
   onDealClick: (deal: Deal) => void;
-  onUpdateDeal: (dealId: string, updates: Partial<Deal>) => void;
-  onDeleteDeals: (dealIds: string[]) => void;
-  onImportDeals: (deals: Partial<Deal>[]) => void;
+  onUpdateDeal: (dealId: string, updates: Partial<Deal>) => Promise<void>;
+  onDeleteDeals: (dealIds: string[]) => Promise<void>;
+  onImportDeals: (deals: Partial<Deal>[]) => Promise<void>;
 }
 
-export const ListView = ({ 
+interface DealColumn {
+  key: keyof Deal | 'select' | 'actions';
+  label: string;
+  visible: boolean;
+  type?: 'text' | 'number' | 'date' | 'currency' | 'select' | 'actions';
+  options?: string[];
+}
+
+const defaultColumns: DealColumn[] = [
+  { key: 'select', label: '', visible: true, type: 'select' },
+  { key: 'project_name', label: 'Project Name', visible: true },
+  { key: 'deal_stage', label: 'Stage', visible: true },
+  { key: 'deal_value', label: 'Value', visible: true, type: 'currency' },
+  { key: 'company_name', label: 'Company', visible: true },
+  { key: 'created_at', label: 'Created', visible: true, type: 'date' },
+  { key: 'modified_at', label: 'Modified', visible: true, type: 'date' },
+];
+
+export const ListView: React.FC<ListViewProps> = ({ 
   deals, 
   onDealClick, 
   onUpdateDeal, 
   onDeleteDeals, 
   onImportDeals 
-}: ListViewProps) => {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filters, setFilters] = useState<AdvancedFilterState>({
-    stages: [],
-    regions: [],
-    leadOwners: [],
-    priorities: [],
-    probabilities: [],
-    handoffStatuses: [],
-    searchTerm: "",
-    probabilityRange: [0, 100],
-  });
-  const [sortBy, setSortBy] = useState<string>("modified_at");
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
-  const [selectedDeals, setSelectedDeals] = useState<Set<string>>(new Set());
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(50);
-  
-  // Action Items Modal state
-  const [actionModalOpen, setActionModalOpen] = useState(false);
-  const [selectedDealForActions, setSelectedDealForActions] = useState<Deal | null>(null);
-
-  // Column customizer state
-  const [columnCustomizerOpen, setColumnCustomizerOpen] = useState(false);
-
-  const [columns, setColumns] = useState<DealColumnConfig[]>([
-    { field: 'project_name', label: 'Project', visible: true, order: 0 },
-    { field: 'customer_name', label: 'Customer', visible: true, order: 1 },
-    { field: 'lead_name', label: 'Lead Name', visible: true, order: 2 },
-    { field: 'lead_owner', label: 'Lead Owner', visible: true, order: 3 },
-    { field: 'stage', label: 'Stage', visible: true, order: 4 },
-    { field: 'priority', label: 'Priority', visible: true, order: 5 },
-    { field: 'total_contract_value', label: 'Value', visible: true, order: 6 },
-    { field: 'probability', label: 'Probability', visible: true, order: 7 },
-    { field: 'expected_closing_date', label: 'Expected Close', visible: true, order: 8 },
-    { field: 'region', label: 'Region', visible: false, order: 9 },
-    { field: 'project_duration', label: 'Duration', visible: false, order: 10 },
-    { field: 'start_date', label: 'Start Date', visible: false, order: 11 },
-    { field: 'end_date', label: 'End Date', visible: false, order: 12 },
-    { field: 'proposal_due_date', label: 'Proposal Due', visible: false, order: 13 },
-    { field: 'total_revenue', label: 'Total Revenue', visible: false, order: 14 },
-  ]);
-
-  // Column width state
-  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
-    'project_name': 200,
-    'customer_name': 150,
-    'lead_name': 150,
-    'lead_owner': 140,
-    'stage': 120,
-    'priority': 100,
-    'total_contract_value': 120,
-    'probability': 120,
-    'expected_closing_date': 140,
-    'region': 120,
-    'project_duration': 120,
-    'start_date': 120,
-    'end_date': 120,
-    'proposal_due_date': 140,
-    'total_revenue': 120,
-  });
-
-  // Resize state
-  const [isResizing, setIsResizing] = useState<string | null>(null);
-  const [startX, setStartX] = useState(0);
-  const [startWidth, setStartWidth] = useState(0);
-  const tableRef = useRef<HTMLTableElement>(null);
-
+}) => {
   const { toast } = useToast();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedDeals, setSelectedDeals] = useState<string[]>([]);
+  const [columns, setColumns] = useState<DealColumn[]>(defaultColumns);
+  const [sortColumn, setSortColumn] = useState<keyof Deal | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
+  const [advancedFilters, setAdvancedFilters] = useState<{ [key: string]: string }>({});
+  const [showColumnCustomizer, setShowColumnCustomizer] = useState(false);
 
-  const formatCurrency = (amount: number | undefined, currency: string = 'EUR') => {
-    if (!amount) return '-';
-    const symbols = { USD: '$', EUR: '€', INR: '₹' };
-    return `${symbols[currency as keyof typeof symbols] || '€'}${amount.toLocaleString()}`;
-  };
+  const filteredDeals = useMemo(() => {
+    let filtered = [...deals];
 
-  const formatDate = (date: string | undefined) => {
-    if (!date) return '-';
-    try {
-      return format(new Date(date), 'MMM dd, yyyy');
-    } catch {
-      return '-';
+    if (searchTerm) {
+      const lowerSearchTerm = searchTerm.toLowerCase();
+      filtered = filtered.filter(deal =>
+        Object.values(deal).some(value =>
+          typeof value === 'string' && value.toLowerCase().includes(lowerSearchTerm)
+        )
+      );
     }
-  };
 
-  // Handle column resize
-  const handleMouseDown = (e: React.MouseEvent, field: string) => {
-    setIsResizing(field);
-    setStartX(e.clientX);
-    setStartWidth(columnWidths[field] || 120);
-    e.preventDefault();
-  };
-
-  const handleMouseMove = (e: MouseEvent) => {
-    if (!isResizing) return;
-
-    const deltaX = e.clientX - startX;
-    const newWidth = Math.max(80, startWidth + deltaX); // Minimum width of 80px
-    
-    setColumnWidths(prev => ({
-      ...prev,
-      [isResizing]: newWidth
-    }));
-  };
-
-  const handleMouseUp = () => {
-    if (isResizing) {
-      // Save to localStorage
-      localStorage.setItem('deals-column-widths', JSON.stringify(columnWidths));
-      setIsResizing(null);
-    }
-  };
-
-  // Mouse event listeners
-  useEffect(() => {
-    if (isResizing) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-      };
-    }
-  }, [isResizing, startX, startWidth, columnWidths]);
-
-  // Load column widths from localStorage
-  useEffect(() => {
-    const savedWidths = localStorage.getItem('deals-column-widths');
-    if (savedWidths) {
-      try {
-        const parsed = JSON.parse(savedWidths);
-        setColumnWidths(parsed);
-      } catch (e) {
-        console.error('Failed to parse saved column widths:', e);
+    Object.entries(advancedFilters).forEach(([field, value]) => {
+      if (value && field !== 'date_range') {
+        filtered = filtered.filter(deal => {
+          const dealValue = deal[field as keyof Deal];
+          if (typeof dealValue === 'string') {
+            return dealValue.toLowerCase().includes(value.toLowerCase());
+          }
+          return false;
+        });
       }
-    }
-  }, []);
+    });
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedDeals(new Set(filteredAndSortedDeals.map(deal => deal.id)));
+    return filtered;
+  }, [deals, searchTerm, advancedFilters]);
+
+  const sortedDeals = useMemo(() => {
+    if (!sortColumn) return filteredDeals;
+
+    return [...filteredDeals].sort((a, b) => {
+      const aValue = a[sortColumn];
+      const bValue = b[sortColumn];
+
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        return sortDirection === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+      } else if (typeof aValue === 'number' && typeof bValue === 'number') {
+        return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
+      } else if (aValue instanceof Date && bValue instanceof Date) {
+        return sortDirection === 'asc' ? aValue.getTime() - bValue.getTime() : bValue.getTime() - aValue.getTime();
+      } else {
+        return 0;
+      }
+    });
+  }, [filteredDeals, sortColumn, sortDirection]);
+
+  const toggleSort = (column: keyof Deal) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
-      setSelectedDeals(new Set());
+      setSortColumn(column);
+      setSortDirection('asc');
     }
   };
 
-  const handleSelectDeal = (dealId: string, checked: boolean) => {
-    const newSelected = new Set(selectedDeals);
-    if (checked) {
-      newSelected.add(dealId);
-    } else {
-      newSelected.delete(dealId);
-    }
-    setSelectedDeals(newSelected);
-  };
-
-  const handleBulkDelete = () => {
-    if (selectedDeals.size === 0) return;
-    
-    onDeleteDeals(Array.from(selectedDeals));
-    setSelectedDeals(new Set());
-    
-    toast({
-      title: "Deals deleted",
-      description: `Successfully deleted ${selectedDeals.size} deals`,
+  const handleCheckboxChange = (dealId: string) => {
+    setSelectedDeals(prev => {
+      if (prev.includes(dealId)) {
+        return prev.filter(id => id !== dealId);
+      } else {
+        return [...prev, dealId];
+      }
     });
   };
 
-  const handleBulkExport = () => {
-    const selectedDealObjects = deals.filter(deal => selectedDeals.has(deal.id));
-    // Export logic handled by DealActionsDropdown
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const dealIds = sortedDeals.map(deal => deal.id);
+      setSelectedDeals(dealIds);
+    } else {
+      setSelectedDeals([]);
+    }
   };
 
-  const handleInlineEdit = async (dealId: string, field: string, value: any) => {
-    try {
-      await onUpdateDeal(dealId, { [field]: value });
+  const handleBulkDelete = async () => {
+    if (selectedDeals.length === 0) {
       toast({
-        title: "Deal updated",
-        description: "Field updated successfully",
+        title: "Error",
+        description: "No deals selected for deletion.",
+        variant: "destructive",
       });
+      return;
+    }
+
+    try {
+      await onDeleteDeals(selectedDeals);
+      setSelectedDeals([]);
     } catch (error) {
       toast({
-        title: "Update failed",
-        description: "Failed to update deal field",
+        title: "Error",
+        description: "Failed to delete deals.",
         variant: "destructive",
       });
     }
   };
 
-  const getFieldType = (field: string): 'text' | 'number' | 'date' | 'select' | 'textarea' | 'boolean' | 'stage' | 'priority' | 'currency' => {
-    if (field === 'stage') return 'stage';
-    if (field === 'priority') return 'priority';
-    if (['total_contract_value', 'total_revenue'].includes(field)) return 'currency';
-    if (['expected_closing_date', 'start_date', 'end_date', 'proposal_due_date'].includes(field)) return 'date';
-    if (['probability', 'project_duration'].includes(field)) return 'number';
-    return 'text';
-  };
+  const activeFilters = useMemo(() => {
+    return Object.entries(advancedFilters)
+      .filter(([key, value]) => value !== '')
+      .map(([key, value]) => {
+        const column = defaultColumns.find(col => col.key === key);
+        return {
+          field: key,
+          label: column?.label || key,
+          value: value
+        };
+      });
+  }, [advancedFilters]);
 
-  const getFieldOptions = (field: string): string[] => {
-    return [];
-  };
+  const activeFiltersCount = activeFilters.length;
 
-  const visibleColumns = columns
-    .filter(col => col.visible)
-    .sort((a, b) => a.order - b.order);
-
-  // Generate available options for multi-select filters
-  const availableOptions = useMemo(() => {
-    const regions = Array.from(new Set(deals.map(d => d.region).filter(Boolean)));
-    const leadOwners = Array.from(new Set(deals.map(d => d.lead_owner).filter(Boolean)));
-    const priorities = Array.from(new Set(deals.map(d => String(d.priority)).filter(p => p !== 'undefined')));
-    const probabilities = Array.from(new Set(deals.map(d => String(d.probability)).filter(p => p !== 'undefined')));
-    const handoffStatuses = Array.from(new Set(deals.map(d => d.handoff_status).filter(Boolean)));
-    
-    return {
-      regions,
-      leadOwners,
-      priorities,
-      probabilities,
-      handoffStatuses,
-    };
-  }, [deals]);
-
-  useEffect(() => {
-    const savedFilters = localStorage.getItem('deals-filters');
-    if (savedFilters) {
-      try {
-        const parsed = JSON.parse(savedFilters);
-        setFilters(parsed);
-        setSearchTerm(parsed.searchTerm || "");
-      } catch (e) {
-        console.error('Failed to parse saved filters:', e);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    const filtersWithSearch = { ...filters, searchTerm };
-    localStorage.setItem('deals-filters', JSON.stringify(filtersWithSearch));
-  }, [filters, searchTerm]);
-
-  const filteredAndSortedDeals = deals
-    .filter(deal => {
-      // Combine search from both searchTerm and filters.searchTerm
-      const allSearchTerms = [searchTerm, filters.searchTerm].filter(Boolean).join(' ').toLowerCase();
-      const matchesSearch = !allSearchTerms || 
-        deal.deal_name?.toLowerCase().includes(allSearchTerms) ||
-        deal.project_name?.toLowerCase().includes(allSearchTerms) ||
-        deal.lead_name?.toLowerCase().includes(allSearchTerms) ||
-        deal.customer_name?.toLowerCase().includes(allSearchTerms) ||
-        deal.region?.toLowerCase().includes(allSearchTerms);
-      
-      // Apply multi-select filters
-      const matchesStages = filters.stages.length === 0 || filters.stages.includes(deal.stage);
-      const matchesRegions = filters.regions.length === 0 || filters.regions.includes(deal.region || '');
-      const matchesLeadOwners = filters.leadOwners.length === 0 || filters.leadOwners.includes(deal.lead_owner || '');
-      const matchesPriorities = filters.priorities.length === 0 || filters.priorities.includes(String(deal.priority || ''));
-      const matchesProbabilities = filters.probabilities.length === 0 || filters.probabilities.includes(String(deal.probability || ''));
-      const matchesHandoffStatuses = filters.handoffStatuses.length === 0 || filters.handoffStatuses.includes(deal.handoff_status || '');
-      
-      // Probability range filter
-      const dealProbability = deal.probability || 0;
-      const matchesProbabilityRange = dealProbability >= filters.probabilityRange[0] && dealProbability <= filters.probabilityRange[1];
-      
-      return matchesSearch && matchesStages && matchesRegions && matchesLeadOwners && 
-             matchesPriorities && matchesProbabilities && matchesHandoffStatuses && matchesProbabilityRange;
-    })
-    .sort((a, b) => {
-      let aValue: any;
-      let bValue: any;
-
-      // Get the values for the sort field
-      if (['priority', 'probability', 'project_duration'].includes(sortBy)) {
-        aValue = a[sortBy as keyof Deal] || 0;
-        bValue = b[sortBy as keyof Deal] || 0;
-      } else if (['total_contract_value', 'total_revenue'].includes(sortBy)) {
-        aValue = a[sortBy as keyof Deal] || 0;
-        bValue = b[sortBy as keyof Deal] || 0;
-      } else if (['expected_closing_date', 'start_date', 'end_date', 'created_at', 'modified_at', 'proposal_due_date'].includes(sortBy)) {
-        const aDateValue = a[sortBy as keyof Deal];
-        const bDateValue = b[sortBy as keyof Deal];
-        aValue = new Date(typeof aDateValue === 'string' ? aDateValue : 0);
-        bValue = new Date(typeof bDateValue === 'string' ? bDateValue : 0);
-      } else {
-        // String fields
-        aValue = String(a[sortBy as keyof Deal] || '').toLowerCase();
-        bValue = String(b[sortBy as keyof Deal] || '').toLowerCase();
-      }
-
-      if (sortOrder === "asc") {
-        return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
-      } else {
-        return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
-      }
+  const removeFilter = (field: string, value: string) => {
+    setAdvancedFilters(prevFilters => {
+      const { [field]: removed, ...rest } = prevFilters;
+      return rest;
     });
-
-  // Pagination
-  const totalPages = Math.ceil(filteredAndSortedDeals.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedDeals = filteredAndSortedDeals.slice(startIndex, startIndex + itemsPerPage);
-
-  // Reset to first page when filters change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filters, searchTerm]);
-
-  const getActiveFiltersCount = () => {
-    let count = 0;
-    if (filters.stages.length > 0) count++;
-    if (filters.regions.length > 0) count++;
-    if (filters.leadOwners.length > 0) count++;
-    if (filters.priorities.length > 0) count++;
-    if (filters.probabilities.length > 0) count++;
-    if (filters.handoffStatuses.length > 0) count++;
-    if (filters.searchTerm) count++;
-    if (filters.probabilityRange[0] > 0 || filters.probabilityRange[1] < 100) count++;
-    return count;
   };
 
   const clearAllFilters = () => {
-    setFilters({
-      stages: [],
-      regions: [],
-      leadOwners: [],
-      priorities: [],
-      probabilities: [],
-      handoffStatuses: [],
-      searchTerm: "",
-      probabilityRange: [0, 100],
-    });
-    setSearchTerm("");
+    setAdvancedFilters({});
   };
 
-  const activeFiltersCount = getActiveFiltersCount();
-  const hasActiveFilters = activeFiltersCount > 0 || searchTerm;
+  const getColumnHeader = (column: DealColumn) => {
+    if (column.key === 'select') {
+      return (
+        <th key={column.key} className="w-10 px-2 py-3 text-left">
+          <Checkbox
+            checked={selectedDeals.length === sortedDeals.length && sortedDeals.length > 0}
+            onCheckedChange={handleSelectAll}
+          />
+        </th>
+      );
+    }
 
-  // Get selected deal objects for export
-  const selectedDealObjects = deals.filter(deal => selectedDeals.has(deal.id));
+    if (column.key === 'actions') {
+      return <th key={column.key} className="px-2 py-3 text-left"></th>;
+    }
 
-  const handleActionClick = (deal: Deal) => {
-    setSelectedDealForActions(deal);
-    setActionModalOpen(true);
+    return (
+      <th
+        key={column.key}
+        className="px-2 py-3 text-left cursor-pointer"
+        onClick={() => {
+          if (column.key !== 'select' && column.key !== 'actions') {
+            toggleSort(column.key);
+          }
+        }}
+      >
+        <div className="flex items-center">
+          {column.label}
+          {sortColumn === column.key && (
+            <span>{sortDirection === 'asc' ? <ChevronUp className="w-4 h-4 ml-1" /> : <ChevronDown className="w-4 h-4 ml-1" />}</span>
+          )}
+        </div>
+      </th>
+    );
   };
 
   return (
     <div className="h-full flex flex-col bg-background">
-      <div className="flex-shrink-0 p-4 bg-background border-b">
-        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-          <div className="flex flex-col sm:flex-row gap-4 flex-1">
-            <div className="relative w-full sm:w-80">
+      {/* Search and Filter Bar */}
+      <div className="flex-shrink-0 bg-background border-b px-6 py-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex flex-1 items-center gap-4 min-w-0">
+            {/* Search Input */}
+            <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
               <Input
-                placeholder="Search all deal details..."
+                placeholder="Search deals..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 transition-all hover:border-primary/50 focus:border-primary"
+                className="pl-10"
               />
             </div>
-            
-            <DealsAdvancedFilter 
-              filters={filters} 
-              onFiltersChange={setFilters}
-              availableRegions={availableOptions.regions}
-              availableLeadOwners={availableOptions.leadOwners}
-              availablePriorities={availableOptions.priorities}
-              availableProbabilities={availableOptions.probabilities}
-              availableHandoffStatuses={availableOptions.handoffStatuses}
-            />
 
-            {hasActiveFilters && (
-              <Button 
-                variant="ghost" 
-                size="sm"
-                onClick={clearAllFilters}
-                className="flex items-center gap-2 text-muted-foreground hover:text-foreground"
-              >
-                <X className="w-4 h-4" />
-                Clear All
-              </Button>
-            )}
+            {/* Filter Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAdvancedFilter(!showAdvancedFilter)}
+              className={showAdvancedFilter ? 'bg-accent' : ''}
+            >
+              <Filter className="w-4 h-4 mr-2" />
+              Filter
+              {activeFiltersCount > 0 && (
+                <Badge variant="secondary" className="ml-2 px-1 py-0 text-xs">
+                  {activeFiltersCount}
+                </Badge>
+              )}
+            </Button>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            <DealActionsDropdown
-              deals={deals}
-              onImport={onImportDeals}
-              onRefresh={() => {}}
-              selectedDeals={selectedDealObjects}
-              onColumnCustomize={() => setColumnCustomizerOpen(true)}
-              showColumns={true}
-            />
+          {/* Right side actions */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowColumnCustomizer(true)}
+            >
+              <Columns className="w-4 h-4 mr-2" />
+              Columns
+            </Button>
           </div>
         </div>
-      </div>
 
-      <div className="flex-1 min-h-0 overflow-auto">
-        <Table ref={tableRef} className="w-full">
-          <TableHeader className="sticky top-0 bg-primary/5 backdrop-blur-sm z-20 border-b-2 border-primary/20">
-            <TableRow className="hover:bg-primary/10 transition-colors border-b border-primary/20">
-              <TableHead className="w-12 min-w-12 bg-primary/10 border-r border-primary/20">
-                <Checkbox
-                  checked={selectedDeals.size === paginatedDeals.length && paginatedDeals.length > 0}
-                  onCheckedChange={handleSelectAll}
-                  className="transition-all hover:scale-110"
-                />
-              </TableHead>
-              {visibleColumns.map(column => (
-                <TableHead 
-                  key={column.field} 
-                  className="font-semibold cursor-pointer hover:bg-primary/15 transition-colors relative bg-primary/10 border-r border-primary/20 text-primary-foreground"
-                  style={{ 
-                    width: `${columnWidths[column.field] || 120}px`,
-                    minWidth: `${columnWidths[column.field] || 120}px`,
-                    maxWidth: `${columnWidths[column.field] || 120}px`
-                  }}
-                  onClick={() => {
-                    if (sortBy === column.field) {
-                      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
-                    } else {
-                      setSortBy(column.field);
-                      setSortOrder("desc");
-                    }
-                  }}
-                >
-                  <div className="flex items-center gap-2 pr-4 text-foreground font-bold">
-                    {column.label}
-                    {sortBy === column.field && (
-                      sortOrder === "asc" ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
-                    )}
-                  </div>
-                  <div
-                    className="absolute right-0 top-0 w-1 h-full cursor-col-resize hover:bg-primary/40 bg-transparent"
-                    onMouseDown={(e) => handleMouseDown(e, column.field)}
-                    style={{
-                      background: isResizing === column.field ? 'hsl(var(--primary) / 0.5)' : undefined
-                    }}
-                  />
-                </TableHead>
-              ))}
-              <TableHead className="w-32 min-w-32 bg-primary/10 border-r border-primary/20 text-foreground font-bold">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredAndSortedDeals.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={visibleColumns.length + 2} className="text-center py-8 text-muted-foreground">
-                  No deals found
-                </TableCell>
-              </TableRow>
-            ) : (
-              paginatedDeals.map((deal) => (
-                <TableRow 
-                  key={deal.id} 
-                  className={`hover:bg-primary/5 transition-all duration-200 hover:shadow-sm ${
-                    selectedDeals.has(deal.id) ? 'bg-primary/10 shadow-sm' : ''
-                  }`}
-                  style={{ 
-                    background: selectedDeals.has(deal.id) ? 'hsl(var(--primary) / 0.1)' : undefined,
-                    borderLeft: selectedDeals.has(deal.id) ? '3px solid hsl(var(--primary))' : undefined 
-                  }}
-                >
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <Checkbox
-                      checked={selectedDeals.has(deal.id)}
-                      onCheckedChange={(checked) => handleSelectDeal(deal.id, Boolean(checked))}
-                      className="transition-all hover:scale-110"
-                    />
-                  </TableCell>
-                  {visibleColumns.map(column => (
-                    <TableCell 
-                      key={column.field} 
-                      className="font-medium"
-                      style={{ 
-                        width: `${columnWidths[column.field] || 120}px`,
-                        minWidth: `${columnWidths[column.field] || 120}px`,
-                        maxWidth: `${columnWidths[column.field] || 120}px`
-                      }}
-                    >
-                      <InlineEditCell
-                        value={deal[column.field as keyof Deal]}
-                        field={column.field}
-                        dealId={deal.id}
-                        onSave={handleInlineEdit}
-                        type={getFieldType(column.field)}
-                        options={getFieldOptions(column.field)}
-                      />
-                    </TableCell>
-                  ))}
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleActionClick(deal)}
-                        className="hover-scale p-1 h-7 w-7"
-                        title="Actions"
-                      >
-                        <CheckSquare className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => onDealClick(deal)}
-                        className="hover-scale p-1 h-7 w-7"
-                        title="Open deal form"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          onDeleteDeals([deal.id]);
-                          toast({
-                            title: "Deal deleted",
-                            description: `Successfully deleted ${deal.project_name || 'deal'}`,
-                          });
-                        }}
-                        className="hover-scale p-1 h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
-                        title="Delete deal"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      <div className="flex-shrink-0 bg-background border-t">
-        {selectedDeals.size > 0 && (
-          <BulkActionsBar
-            selectedCount={selectedDeals.size}
-            onDelete={handleBulkDelete}
-            onExport={handleBulkExport}
-            onClearSelection={() => setSelectedDeals(new Set())}
-          />
+        {/* Advanced Filters Panel */}
+        {showAdvancedFilter && (
+          <div className="mt-4 pt-4 border-t">
+            <DealsAdvancedFilter
+              deals={deals}
+              onFiltersChange={setAdvancedFilters}
+              initialFilters={advancedFilters}
+            />
+          </div>
         )}
 
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4">
-          <div className="flex flex-col sm:flex-row items-center gap-4 text-sm text-muted-foreground">
-            <span>Total: <strong>{filteredAndSortedDeals.length}</strong> deals</span>
-            {hasActiveFilters && (
-              <div className="flex items-center gap-2">
-                <span>Active filters:</span>
-                {filters.stages.length > 0 && <Badge variant="secondary">Stages: {filters.stages.join(', ')}</Badge>}
-                {filters.regions.length > 0 && <Badge variant="secondary">Regions: {filters.regions.join(', ')}</Badge>}
-                {filters.leadOwners.length > 0 && <Badge variant="secondary">Owners: {filters.leadOwners.join(', ')}</Badge>}
-                {filters.priorities.length > 0 && <Badge variant="secondary">Priorities: {filters.priorities.join(', ')}</Badge>}
-                {filters.probabilities.length > 0 && <Badge variant="secondary">Probabilities: {filters.probabilities.join(', ')}%</Badge>}
-                {searchTerm && <Badge variant="secondary">Search: {searchTerm}</Badge>}
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={clearAllFilters}
-                  className="h-6 px-2 text-xs"
-                >
-                  Clear All
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {totalPages > 1 && (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                disabled={currentPage === 1}
+        {/* Active Filters Display */}
+        {activeFilters.length > 0 && (
+          <div className="mt-4 pt-4 border-t">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm text-muted-foreground">Active filters:</span>
+              {activeFilters.map((filter, index) => (
+                <Badge key={index} variant="secondary" className="flex items-center gap-1">
+                  {filter.label}: {filter.value}
+                  <X 
+                    className="w-3 h-3 cursor-pointer" 
+                    onClick={() => removeFilter(filter.field, filter.value)}
+                  />
+                </Badge>
+              ))}
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={clearAllFilters}
+                className="text-xs"
               >
-                Previous
-              </Button>
-              <span className="text-sm text-muted-foreground px-3">
-                Page {currentPage} of {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"  
-                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                disabled={currentPage === totalPages}
-              >
-                Next
+                Clear all
               </Button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
-      <DealActionItemsModal
-        open={actionModalOpen}
-        onOpenChange={setActionModalOpen}
-        deal={selectedDealForActions}
-      />
+      {/* Bulk Actions Bar */}
+      {selectedDeals.length > 0 && (
+        <BulkActionsBar
+          selectedCount={selectedDeals.length}
+          onDelete={() => handleBulkDelete()}
+          onClearSelection={() => setSelectedDeals([])}
+        />
+      )}
 
-      <DealColumnCustomizer
-        open={columnCustomizerOpen}
-        onOpenChange={setColumnCustomizerOpen}
-        columns={columns}
-        onColumnsChange={setColumns}
+      {/* Table Container */}
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                {columns.filter(col => col.visible).map(column => (
+                  getColumnHeader(column)
+                ))}
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {sortedDeals.map(deal => (
+                <tr key={deal.id} className="hover:bg-accent/40">
+                  {columns.filter(col => col.visible).map(column => {
+                    if (column.key === 'select') {
+                      return (
+                        <td key={column.key} className="px-2 py-4">
+                          <Checkbox
+                            checked={selectedDeals.includes(deal.id)}
+                            onCheckedChange={() => handleCheckboxChange(deal.id)}
+                          />
+                        </td>
+                      );
+                    }
+
+                    if (column.key === 'actions') {
+                      return (
+                        <td key={column.key} className="px-2 py-4">
+                          <Button variant="ghost" size="sm" onClick={() => onDealClick(deal)}>
+                            View
+                          </Button>
+                        </td>
+                      );
+                    }
+
+                    let cellContent: React.ReactNode = deal[column.key];
+
+                    if (column.type === 'date' && deal[column.key]) {
+                      const dateValue = new Date(deal[column.key] as string);
+                      cellContent = <span className="text-xs text-muted-foreground">{formatDistanceToNow(dateValue, { addSuffix: true })}</span>;
+                    }
+
+                    return (
+                      <td key={column.key} className="px-2 py-4">
+                        <InlineEditCell
+                          value={deal[column.key]}
+                          columnType={column.type || 'text'}
+                          onValueChange={async (newValue) => {
+                            try {
+                              await onUpdateDeal(deal.id, { [column.key]: newValue });
+                            } catch (error) {
+                              console.error("Failed to update deal:", error);
+                              toast({
+                                title: "Error",
+                                description: "Failed to update deal.",
+                                variant: "destructive",
+                              });
+                            }
+                          }}
+                        >
+                          {cellContent}
+                        </InlineEditCell>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {sortedDeals.length === 0 && (
+          <div className="py-6 px-4 text-center text-muted-foreground">
+            No deals found.
+          </div>
+        )}
+      </div>
+
+      {/* Column Customizer */}
+      <DealColumnCustomizer 
+        open={showColumnCustomizer}
+        onOpenChange={setShowColumnCustomizer}
+        columns={columns.map((col, index) => ({
+          field: col.key as string,
+          label: col.label,
+          visible: col.visible,
+          order: index
+        }))}
+        onColumnsChange={(newColumns) => {
+          const updatedColumns = newColumns.map(col => ({
+            key: col.field as keyof Deal | 'select' | 'actions',
+            label: col.label,
+            visible: col.visible,
+            type: columns.find(c => c.key === col.field)?.type || 'text'
+          }));
+          setColumns(updatedColumns);
+        }}
       />
     </div>
   );
