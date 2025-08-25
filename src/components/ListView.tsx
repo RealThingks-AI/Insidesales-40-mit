@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Deal } from "@/types/deal";
 import { DealColumnCustomizer } from "./DealColumnCustomizer";
-import { DealsAdvancedFilter } from "./DealsAdvancedFilter";
+import { DealsAdvancedFilter, AdvancedFilterState } from "./DealsAdvancedFilter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -37,13 +38,24 @@ interface DealColumn {
 
 const defaultColumns: DealColumn[] = [
   { key: 'select', label: '', visible: true, type: 'select' },
-  { key: 'project_name', label: 'Project Name', visible: true },
-  { key: 'deal_stage', label: 'Stage', visible: true },
-  { key: 'deal_value', label: 'Value', visible: true, type: 'currency' },
-  { key: 'company_name', label: 'Company', visible: true },
+  { key: 'deal_name', label: 'Deal Name', visible: true },
+  { key: 'stage', label: 'Stage', visible: true },
+  { key: 'total_contract_value', label: 'Value', visible: true, type: 'currency' },
+  { key: 'customer_name', label: 'Customer', visible: true },
   { key: 'created_at', label: 'Created', visible: true, type: 'date' },
   { key: 'modified_at', label: 'Modified', visible: true, type: 'date' },
 ];
+
+const initialFilters: AdvancedFilterState = {
+  stages: [],
+  regions: [],
+  leadOwners: [],
+  priorities: [],
+  probabilities: [],
+  handoffStatuses: [],
+  searchTerm: "",
+  probabilityRange: [0, 100]
+};
 
 export const ListView: React.FC<ListViewProps> = ({ 
   deals, 
@@ -59,7 +71,7 @@ export const ListView: React.FC<ListViewProps> = ({
   const [sortColumn, setSortColumn] = useState<keyof Deal | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
-  const [advancedFilters, setAdvancedFilters] = useState<{ [key: string]: string }>({});
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilterState>(initialFilters);
   const [showColumnCustomizer, setShowColumnCustomizer] = useState(false);
 
   const filteredDeals = useMemo(() => {
@@ -74,17 +86,31 @@ export const ListView: React.FC<ListViewProps> = ({
       );
     }
 
-    Object.entries(advancedFilters).forEach(([field, value]) => {
-      if (value && field !== 'date_range') {
-        filtered = filtered.filter(deal => {
-          const dealValue = deal[field as keyof Deal];
-          if (typeof dealValue === 'string') {
-            return dealValue.toLowerCase().includes(value.toLowerCase());
-          }
-          return false;
-        });
-      }
-    });
+    // Apply advanced filters
+    if (advancedFilters.stages.length > 0) {
+      filtered = filtered.filter(deal => advancedFilters.stages.includes(deal.stage));
+    }
+
+    if (advancedFilters.regions.length > 0) {
+      filtered = filtered.filter(deal => deal.region && advancedFilters.regions.includes(deal.region));
+    }
+
+    if (advancedFilters.leadOwners.length > 0) {
+      filtered = filtered.filter(deal => deal.lead_owner && advancedFilters.leadOwners.includes(deal.lead_owner));
+    }
+
+    if (advancedFilters.priorities.length > 0) {
+      filtered = filtered.filter(deal => deal.priority && advancedFilters.priorities.includes(deal.priority.toString()));
+    }
+
+    if (advancedFilters.searchTerm) {
+      const lowerSearchTerm = advancedFilters.searchTerm.toLowerCase();
+      filtered = filtered.filter(deal =>
+        Object.values(deal).some(value =>
+          typeof value === 'string' && value.toLowerCase().includes(lowerSearchTerm)
+        )
+      );
+    }
 
     return filtered;
   }, [deals, searchTerm, advancedFilters]);
@@ -100,11 +126,15 @@ export const ListView: React.FC<ListViewProps> = ({
         return sortDirection === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
       } else if (typeof aValue === 'number' && typeof bValue === 'number') {
         return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
-      } else if (aValue instanceof Date && bValue instanceof Date) {
-        return sortDirection === 'asc' ? aValue.getTime() - bValue.getTime() : bValue.getTime() - aValue.getTime();
-      } else {
-        return 0;
+      } else if (aValue && bValue) {
+        // Handle dates as strings
+        const aDate = new Date(aValue as string);
+        const bDate = new Date(bValue as string);
+        if (!isNaN(aDate.getTime()) && !isNaN(bDate.getTime())) {
+          return sortDirection === 'asc' ? aDate.getTime() - bDate.getTime() : bDate.getTime() - aDate.getTime();
+        }
       }
+      return 0;
     });
   }, [filteredDeals, sortColumn, sortDirection]);
 
@@ -158,30 +188,68 @@ export const ListView: React.FC<ListViewProps> = ({
     }
   };
 
-  const activeFilters = useMemo(() => {
-    return Object.entries(advancedFilters)
-      .filter(([key, value]) => value !== '')
-      .map(([key, value]) => {
-        const column = defaultColumns.find(col => col.key === key);
-        return {
-          field: key,
-          label: column?.label || key,
-          value: value
-        };
+  const handleBulkExport = () => {
+    if (selectedDeals.length === 0) {
+      toast({
+        title: "Error",
+        description: "No deals selected for export.",
+        variant: "destructive",
       });
+      return;
+    }
+
+    const selectedDealsData = sortedDeals.filter(deal => selectedDeals.includes(deal.id));
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + "Deal Name,Stage,Customer,Value,Created\n"
+      + selectedDealsData.map(deal => 
+          `"${deal.deal_name}","${deal.stage}","${deal.customer_name || ''}","${deal.total_contract_value || ''}","${deal.created_at}"`
+        ).join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "selected_deals.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    toast({
+      title: "Success",
+      description: "Deals exported successfully.",
+    });
+  };
+
+  const activeFilters = useMemo(() => {
+    const filters = [];
+    if (advancedFilters.stages.length > 0) {
+      filters.push({ field: 'stages', label: 'Stages', value: advancedFilters.stages.join(', ') });
+    }
+    if (advancedFilters.regions.length > 0) {
+      filters.push({ field: 'regions', label: 'Regions', value: advancedFilters.regions.join(', ') });
+    }
+    if (advancedFilters.leadOwners.length > 0) {
+      filters.push({ field: 'leadOwners', label: 'Lead Owners', value: advancedFilters.leadOwners.join(', ') });
+    }
+    if (advancedFilters.priorities.length > 0) {
+      filters.push({ field: 'priorities', label: 'Priorities', value: advancedFilters.priorities.join(', ') });
+    }
+    if (advancedFilters.searchTerm) {
+      filters.push({ field: 'searchTerm', label: 'Search', value: advancedFilters.searchTerm });
+    }
+    return filters;
   }, [advancedFilters]);
 
   const activeFiltersCount = activeFilters.length;
 
-  const removeFilter = (field: string, value: string) => {
-    setAdvancedFilters(prevFilters => {
-      const { [field]: removed, ...rest } = prevFilters;
-      return rest;
-    });
+  const removeFilter = (field: string) => {
+    setAdvancedFilters(prev => ({
+      ...prev,
+      [field]: field === 'searchTerm' ? '' : []
+    }));
   };
 
   const clearAllFilters = () => {
-    setAdvancedFilters({});
+    setAdvancedFilters(initialFilters);
   };
 
   const getColumnHeader = (column: DealColumn) => {
@@ -219,6 +287,13 @@ export const ListView: React.FC<ListViewProps> = ({
       </th>
     );
   };
+
+  // Get unique values for filter options
+  const availableRegions = Array.from(new Set(deals.map(d => d.region).filter(Boolean))) as string[];
+  const availableLeadOwners = Array.from(new Set(deals.map(d => d.lead_owner).filter(Boolean))) as string[];
+  const availablePriorities = Array.from(new Set(deals.map(d => d.priority?.toString()).filter(Boolean))) as string[];
+  const availableProbabilities = Array.from(new Set(deals.map(d => d.probability?.toString()).filter(Boolean))) as string[];
+  const availableHandoffStatuses = Array.from(new Set(deals.map(d => d.handoff_status).filter(Boolean))) as string[];
 
   return (
     <div className="h-full flex flex-col bg-background">
@@ -271,9 +346,13 @@ export const ListView: React.FC<ListViewProps> = ({
         {showAdvancedFilter && (
           <div className="mt-4 pt-4 border-t">
             <DealsAdvancedFilter
-              deals={deals}
+              filters={advancedFilters}
               onFiltersChange={setAdvancedFilters}
-              initialFilters={advancedFilters}
+              availableRegions={availableRegions}
+              availableLeadOwners={availableLeadOwners}
+              availablePriorities={availablePriorities}
+              availableProbabilities={availableProbabilities}
+              availableHandoffStatuses={availableHandoffStatuses}
             />
           </div>
         )}
@@ -288,7 +367,7 @@ export const ListView: React.FC<ListViewProps> = ({
                   {filter.label}: {filter.value}
                   <X 
                     className="w-3 h-3 cursor-pointer" 
-                    onClick={() => removeFilter(filter.field, filter.value)}
+                    onClick={() => removeFilter(filter.field)}
                   />
                 </Badge>
               ))}
@@ -310,6 +389,7 @@ export const ListView: React.FC<ListViewProps> = ({
         <BulkActionsBar
           selectedCount={selectedDeals.length}
           onDelete={() => handleBulkDelete()}
+          onExport={() => handleBulkExport()}
           onClearSelection={() => setSelectedDeals([])}
         />
       )}
@@ -361,10 +441,12 @@ export const ListView: React.FC<ListViewProps> = ({
                       <td key={column.key} className="px-2 py-4">
                         <InlineEditCell
                           value={deal[column.key]}
-                          columnType={column.type || 'text'}
-                          onValueChange={async (newValue) => {
+                          field={column.key as string}
+                          dealId={deal.id}
+                          type={column.type || 'text'}
+                          onSave={async (dealId, field, newValue) => {
                             try {
-                              await onUpdateDeal(deal.id, { [column.key]: newValue });
+                              await onUpdateDeal(dealId, { [field]: newValue });
                             } catch (error) {
                               console.error("Failed to update deal:", error);
                               toast({
@@ -374,9 +456,7 @@ export const ListView: React.FC<ListViewProps> = ({
                               });
                             }
                           }}
-                        >
-                          {cellContent}
-                        </InlineEditCell>
+                        />
                       </td>
                     );
                   })}
