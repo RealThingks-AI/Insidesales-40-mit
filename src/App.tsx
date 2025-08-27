@@ -29,13 +29,16 @@ const FixedSidebarLayout = ({ children }: { children: React.ReactNode }) => {
         <AppSidebar isFixed={true} isOpen={sidebarOpen} onToggle={setSidebarOpen} />
       </div>
       <main 
-        className="flex-1 bg-background overflow-x-auto"
+        className="flex-1 bg-background min-h-screen"
         style={{ 
-          marginLeft: sidebarOpen ? '200px' : '60px',
-          transition: 'margin-left 300ms ease-in-out'
+          marginLeft: sidebarOpen ? '200px' : '64px',
+          transition: 'margin-left 300ms ease-in-out',
+          width: `calc(100vw - ${sidebarOpen ? '200px' : '64px'})`
         }}
       >
-        {children}
+        <div className="w-full h-full overflow-auto">
+          {children}
+        </div>
       </main>
     </div>
   );
