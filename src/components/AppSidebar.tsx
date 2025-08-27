@@ -15,7 +15,7 @@ import {
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useThemePreferences } from "@/hooks/useThemePreferences";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Tooltip,
   TooltipContent,
@@ -37,6 +37,7 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProps) {
+  // Start collapsed by default
   const [isPinned, setIsPinned] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -46,6 +47,7 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
 
   // Use external state if provided (for fixed mode), otherwise use internal state
   const sidebarOpen = isFixed ? (isOpen ?? false) : isPinned;
+  const setSidebarOpen = isFixed ? (onToggle || (() => {})) : setIsPinned;
 
   const isActive = (path: string) => {
     if (path === "/") {
@@ -98,66 +100,83 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
         isFixed ? 'relative' : ''
       }`}
       style={{ 
-        width: sidebarOpen ? '240px' : '64px',
-        minWidth: sidebarOpen ? '240px' : '64px',
-        maxWidth: sidebarOpen ? '240px' : '64px'
+        width: sidebarOpen ? '200px' : '60px',
+        minWidth: sidebarOpen ? '200px' : '60px',
+        maxWidth: sidebarOpen ? '200px' : '60px',
+        overflow: 'visible'
       }}
     >
       {/* Header */}
-      <div className="flex items-center border-b border-sidebar-border relative h-16 px-4">
+      <div className="flex items-center border-b border-sidebar-border relative" style={{ height: '64px' }}>
         <div 
-          className="flex items-center cursor-pointer"
+          className="flex items-center cursor-pointer absolute left-3"
           onClick={handleLogoClick}
         >
-          <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">
-            <img 
-              src="/lovable-uploads/12bdcc4a-a1c8-4ccf-ba6a-931fd566d3c8.png" 
-              alt="Logo" 
-              className="w-8 h-8 object-contain"
-            />
-          </div>
-          <div 
-            className={`ml-3 text-sidebar-foreground font-semibold text-lg whitespace-nowrap transition-all duration-300 overflow-hidden ${
-              sidebarOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0'
-            }`}
-            style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
-          >
-            RealThingks
-          </div>
+          <img 
+            src="/lovable-uploads/12bdcc4a-a1c8-4ccf-ba6a-931fd566d3c8.png" 
+            alt="Logo" 
+            className="w-7 h-7 flex-shrink-0 object-contain"
+          />
+          {sidebarOpen && (
+            <span className="ml-2 text-sidebar-foreground font-semibold text-base whitespace-nowrap opacity-100 transition-opacity duration-300" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+              RealThingks
+            </span>
+          )}
         </div>
       </div>
 
       {/* Menu Items */}
-      <div className="flex-1 py-4">
-        <nav className="space-y-1 px-3">
+      <div className="flex-1 py-3">
+        <nav className="space-y-1 px-2">
           {menuItems.map((item) => {
             const active = isActive(item.url);
             const menuButton = (
               <NavLink
                 to={item.url}
                 className={`
-                  flex items-center h-10 rounded-lg relative transition-colors duration-200 font-medium
+                  flex items-center rounded-lg relative transition-colors duration-200 font-medium
                   ${active 
                     ? 'text-sidebar-primary bg-sidebar-accent' 
                     : 'text-sidebar-foreground hover:text-sidebar-primary hover:bg-sidebar-accent/50'
                   }
                 `}
+                style={{ 
+                  paddingTop: '10px',
+                  paddingBottom: '10px',
+                  paddingLeft: sidebarOpen ? '12px' : '0px',
+                  paddingRight: sidebarOpen ? '12px' : '0px',
+                  minHeight: '40px',
+                  fontFamily: 'Inter, system-ui, sans-serif',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  justifyContent: sidebarOpen ? 'flex-start' : 'center'
+                }}
               >
-                <div className="w-10 h-10 flex items-center justify-center flex-shrink-0">
-                  <item.icon className="w-5 h-5" />
-                </div>
                 <div 
-                  className={`transition-all duration-300 overflow-hidden whitespace-nowrap ${
-                    sidebarOpen ? 'opacity-100 w-auto ml-0' : 'opacity-0 w-0 ml-0'
-                  }`}
+                  className="flex items-center justify-center flex-shrink-0"
                   style={{ 
-                    fontFamily: 'Inter, system-ui, sans-serif',
-                    fontSize: '14px',
-                    fontWeight: '500'
+                    width: '18px',
+                    height: '18px',
+                    minWidth: '18px',
+                    minHeight: '18px',
+                    marginRight: sidebarOpen ? '10px' : '0px'
                   }}
                 >
-                  {item.title}
+                  <item.icon 
+                    className="w-[18px] h-[18px]" 
+                    style={{ 
+                      minWidth: '18px',
+                      minHeight: '18px'
+                    }} 
+                  />
                 </div>
+                {sidebarOpen && (
+                  <span 
+                    className="opacity-100 transition-opacity duration-300"
+                  >
+                    {item.title}
+                  </span>
+                )}
               </NavLink>
             );
 
@@ -183,34 +202,50 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
         </nav>
       </div>
 
-      {/* Bottom Section */}
-      <div className="border-t border-sidebar-border p-3 space-y-1">
+      {/* Bottom Section - Notifications, Theme Toggle, Pin Toggle & User & Sign Out */}
+      <div className="border-t border-sidebar-border p-2 space-y-1 relative" style={{ overflow: 'visible', zIndex: 100 }}>
         {/* Notification Bell */}
-        <div>
+        <div className={sidebarOpen ? "" : "flex justify-center"}>
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 onClick={handleNotificationClick}
-                className={`flex items-center h-10 w-full rounded-lg transition-colors font-medium ${
-                  currentPath === '/notifications' 
-                    ? 'text-sidebar-primary bg-sidebar-accent' 
-                    : 'text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50'
+                className={`flex items-center rounded-lg transition-colors text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50 font-medium ${
+                  currentPath === '/notifications' ? 'text-sidebar-primary bg-sidebar-accent' : ''
                 }`}
+                style={{
+                  paddingTop: '10px',
+                  paddingBottom: '10px',
+                  paddingLeft: sidebarOpen ? '12px' : '0px',
+                  paddingRight: sidebarOpen ? '12px' : '0px',
+                  minHeight: '40px',
+                  width: sidebarOpen ? '100%' : '36px',
+                  justifyContent: sidebarOpen ? 'flex-start' : 'center'
+                }}
               >
-                <div className="w-10 h-10 flex items-center justify-center flex-shrink-0">
-                  <Bell className="w-5 h-5" />
-                </div>
                 <div 
-                  className={`transition-all duration-300 overflow-hidden whitespace-nowrap ${
-                    sidebarOpen ? 'opacity-100 w-auto ml-0' : 'opacity-0 w-0 ml-0'
-                  }`}
+                  className="flex items-center justify-center flex-shrink-0"
                   style={{ 
-                    fontFamily: 'Inter, system-ui, sans-serif',
-                    fontSize: '14px'
+                    width: '18px',
+                    height: '18px',
+                    minWidth: '18px',
+                    minHeight: '18px',
+                    marginRight: sidebarOpen ? '10px' : '0px'
                   }}
                 >
-                  Notifications
+                  <Bell className="w-[18px] h-[18px]" />
                 </div>
+                {sidebarOpen && (
+                  <span 
+                    className="opacity-100 transition-opacity duration-300"
+                    style={{ 
+                      fontFamily: 'Inter, system-ui, sans-serif',
+                      fontSize: '13px'
+                    }}
+                  >
+                    Notifications
+                  </span>
+                )}
               </button>
             </TooltipTrigger>
             <TooltipContent side={sidebarOpen ? "bottom" : "right"}>
@@ -220,30 +255,48 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
         </div>
 
         {/* Theme Toggle */}
-        <div>
+        <div className={sidebarOpen ? "" : "flex justify-center"}>
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 onClick={handleThemeToggle}
-                className="flex items-center h-10 w-full rounded-lg transition-colors text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50 font-medium"
+                className="flex items-center rounded-lg transition-colors text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50 font-medium"
+                style={{
+                  paddingTop: '10px',
+                  paddingBottom: '10px',
+                  paddingLeft: sidebarOpen ? '12px' : '0px',
+                  paddingRight: sidebarOpen ? '12px' : '0px',
+                  minHeight: '40px',
+                  width: sidebarOpen ? '100%' : '36px',
+                  justifyContent: sidebarOpen ? 'flex-start' : 'center'
+                }}
               >
-                <div className="w-10 h-10 flex items-center justify-center flex-shrink-0">
-                  {(() => {
-                    const ThemeIcon = getThemeIcon();
-                    return <ThemeIcon className="w-5 h-5" />;
-                  })()}
-                </div>
                 <div 
-                  className={`transition-all duration-300 overflow-hidden whitespace-nowrap ${
-                    sidebarOpen ? 'opacity-100 w-auto ml-0' : 'opacity-0 w-0 ml-0'
-                  }`}
+                  className="flex items-center justify-center flex-shrink-0"
                   style={{ 
-                    fontFamily: 'Inter, system-ui, sans-serif',
-                    fontSize: '14px'
+                    width: '18px',
+                    height: '18px',
+                    minWidth: '18px',
+                    minHeight: '18px',
+                    marginRight: sidebarOpen ? '10px' : '0px'
                   }}
                 >
-                  Theme
+                  {(() => {
+                    const ThemeIcon = getThemeIcon();
+                    return <ThemeIcon className="w-[18px] h-[18px]" />;
+                  })()}
                 </div>
+                {sidebarOpen && (
+                  <span 
+                    className="opacity-100 transition-opacity duration-300"
+                    style={{ 
+                      fontFamily: 'Inter, system-ui, sans-serif',
+                      fontSize: '13px'
+                    }}
+                  >
+                    Theme
+                  </span>
+                )}
               </button>
             </TooltipTrigger>
             <TooltipContent side={sidebarOpen ? "bottom" : "right"}>
@@ -253,27 +306,45 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
         </div>
 
         {/* Pin Toggle Button */}
-        <div>
+        <div className={sidebarOpen ? "" : "flex justify-center"}>
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 onClick={togglePin}
-                className="flex items-center h-10 w-full rounded-lg transition-colors text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50 font-medium"
+                className="flex items-center rounded-lg transition-colors text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50 font-medium"
+                style={{
+                  paddingTop: '10px',
+                  paddingBottom: '10px',
+                  paddingLeft: sidebarOpen ? '12px' : '0px',
+                  paddingRight: sidebarOpen ? '12px' : '0px',
+                  minHeight: '40px',
+                  width: sidebarOpen ? '100%' : '36px',
+                  justifyContent: sidebarOpen ? 'flex-start' : 'center'
+                }}
               >
-                <div className="w-10 h-10 flex items-center justify-center flex-shrink-0">
-                  {sidebarOpen ? <Pin className="w-5 h-5" /> : <PinOff className="w-5 h-5" />}
-                </div>
                 <div 
-                  className={`transition-all duration-300 overflow-hidden whitespace-nowrap ${
-                    sidebarOpen ? 'opacity-100 w-auto ml-0' : 'opacity-0 w-0 ml-0'
-                  }`}
+                  className="flex items-center justify-center flex-shrink-0"
                   style={{ 
-                    fontFamily: 'Inter, system-ui, sans-serif',
-                    fontSize: '14px'
+                    width: '18px',
+                    height: '18px',
+                    minWidth: '18px',
+                    minHeight: '18px',
+                    marginRight: sidebarOpen ? '10px' : '0px'
                   }}
                 >
-                  {sidebarOpen ? 'Collapse' : 'Expand'}
+                  {sidebarOpen ? <Pin className="w-[18px] h-[18px]" /> : <PinOff className="w-[18px] h-[18px]" />}
                 </div>
+                {sidebarOpen && (
+                  <span 
+                    className="opacity-100 transition-opacity duration-300"
+                    style={{ 
+                      fontFamily: 'Inter, system-ui, sans-serif',
+                      fontSize: '13px'
+                    }}
+                  >
+                    {sidebarOpen ? 'Collapse' : 'Expand'}
+                  </span>
+                )}
               </button>
             </TooltipTrigger>
             <TooltipContent side={sidebarOpen ? "bottom" : "right"}>
@@ -283,27 +354,45 @@ export function AppSidebar({ isFixed = false, isOpen, onToggle }: AppSidebarProp
         </div>
 
         {/* User & Sign Out */}
-        <div>
+        <div className={sidebarOpen ? "" : "flex justify-center"}>
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 onClick={handleSignOut}
-                className="flex items-center h-10 w-full rounded-lg transition-colors text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50 font-medium"
+                className="flex items-center rounded-lg transition-colors text-sidebar-foreground/70 hover:text-sidebar-primary hover:bg-sidebar-accent/50 font-medium"
+                style={{
+                  paddingTop: '10px',
+                  paddingBottom: '10px',
+                  paddingLeft: sidebarOpen ? '12px' : '0px',
+                  paddingRight: sidebarOpen ? '12px' : '0px',
+                  minHeight: '40px',
+                  width: sidebarOpen ? '100%' : '36px',
+                  justifyContent: sidebarOpen ? 'flex-start' : 'center'
+                }}
               >
-                <div className="w-10 h-10 flex items-center justify-center flex-shrink-0">
-                  <LogOut className="w-5 h-5" />
-                </div>
                 <div 
-                  className={`transition-all duration-300 overflow-hidden whitespace-nowrap ${
-                    sidebarOpen ? 'opacity-100 w-auto ml-0' : 'opacity-0 w-0 ml-0'
-                  }`}
+                  className="flex items-center justify-center flex-shrink-0"
                   style={{ 
-                    fontFamily: 'Inter, system-ui, sans-serif',
-                    fontSize: '14px'
+                    width: '18px',
+                    height: '18px',
+                    minWidth: '18px',
+                    minHeight: '18px',
+                    marginRight: sidebarOpen ? '10px' : '0px'
                   }}
                 >
-                  {getUserDisplayName()}
+                  <LogOut className="w-[18px] h-[18px]" />
                 </div>
+                {sidebarOpen && (
+                  <span 
+                    className="opacity-100 transition-opacity duration-300"
+                    style={{ 
+                      fontFamily: 'Inter, system-ui, sans-serif',
+                      fontSize: '13px'
+                    }}
+                  >
+                    {getUserDisplayName()}
+                  </span>
+                )}
               </button>
             </TooltipTrigger>
             <TooltipContent side={sidebarOpen ? "bottom" : "right"}>
