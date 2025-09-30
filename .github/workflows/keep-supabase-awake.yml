@@ -3,7 +3,7 @@ name: Keep Supabase Awake
 on:
   schedule:
     - cron: '*/5 * * * *'  # every 5 minutes
-  workflow_dispatch:       # allows manual run
+#  workflow_dispatch:       # allows manual run
 
 jobs:
   ping_supabase:
