@@ -2,17 +2,25 @@ name: Keep Supabase Awake
 
 on:
   schedule:
-    - cron: '*/5 * * * *'  # Runs every 5 minutes
-  workflow_dispatch:       # Allows manual run
+    - cron: '*/5 * * * *'  # every 5 minutes
+  workflow_dispatch:       # allows manual run
 
 jobs:
   ping_supabase:
     runs-on: ubuntu-latest
     steps:
       - name: Ping Supabase Table
+        id: ping
         run: |
-          curl -X GET \
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
             -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
             -H "Content-Type: application/json" \
-            https://nreslricievaamrwfrlx.supabase.co/rest/v1/keep_alive?select=id&limit=1
+            https://nreslricievaamrwfrlx.supabase.co/rest/v1/keep_alive?select=id&limit=1)
+          echo "response=$RESPONSE" >> $GITHUB_OUTPUT
+
+      - name: Fail workflow if database not responding
+        if: steps.ping.outputs.response != '200'
+        run: |
+          echo "Supabase did not respond! Response code: ${{ steps.ping.outputs.response }}"
+          exit 1
