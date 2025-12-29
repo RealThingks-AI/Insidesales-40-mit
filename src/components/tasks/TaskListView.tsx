@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { format, isPast, isToday } from 'date-fns';
 import { Task, TaskStatus, TaskModuleType } from '@/types/task';
 import { Card } from '@/components/ui/card';
@@ -42,6 +42,7 @@ interface TaskListViewProps {
   onDelete: (taskId: string) => void;
   onStatusChange: (taskId: string, status: TaskStatus) => void;
   onToggleComplete: (task: Task) => void;
+  initialStatusFilter?: string;
 }
 
 const priorityColors = {
@@ -71,13 +72,19 @@ export const TaskListView = ({
   onDelete,
   onStatusChange,
   onToggleComplete,
+  initialStatusFilter = 'all',
 }: TaskListViewProps) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>(initialStatusFilter);
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [assignedToFilter, setAssignedToFilter] = useState<string>('all');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
+
+  // Sync statusFilter when initialStatusFilter prop changes (from URL)
+  useEffect(() => {
+    setStatusFilter(initialStatusFilter);
+  }, [initialStatusFilter]);
 
   const assignedToIds = [...new Set(tasks.map(t => t.assigned_to).filter(Boolean))] as string[];
   const createdByIds = [...new Set(tasks.map(t => t.created_by).filter(Boolean))] as string[];

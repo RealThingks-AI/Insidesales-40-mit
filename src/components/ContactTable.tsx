@@ -98,6 +98,14 @@ export const ContactTable = ({
   });
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
 
+  // Sync sourceFilter when URL changes
+  useEffect(() => {
+    const urlSource = searchParams.get('source');
+    if (urlSource) {
+      setSourceFilter(urlSource);
+    }
+  }, [searchParams]);
+
   console.log('ContactTable: Rendering with contacts:', contacts.length);
 
   const fetchContacts = async () => {
