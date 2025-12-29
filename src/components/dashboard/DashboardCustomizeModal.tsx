@@ -11,7 +11,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea
 
 export type WidgetKey = 
   | "leads" | "contacts" | "deals" | "actionItems" | "quickActions" 
-  | "leadStatus" | "upcomingMeetings" | "recentActivities" | "taskReminders" | "emailStats"
+  | "upcomingMeetings" | "recentActivities" | "taskReminders" | "emailStats"
   | "accountsSummary" | "myPipeline" | "weeklySummary" | "followUpsDue" | "todaysAgenda";
 
 export interface WidgetLayout {
@@ -50,10 +50,9 @@ const DEFAULT_WIDGETS: DashboardWidget[] = [
   { key: "upcomingMeetings", label: "Upcoming Meetings", icon: <Calendar className="w-4 h-4" />, visible: true, defaultLayout: { x: 4, y: 4, w: 4, h: 3 } },
   { key: "taskReminders", label: "Task Reminders", icon: <Bell className="w-4 h-4" />, visible: true, defaultLayout: { x: 8, y: 4, w: 4, h: 3 } },
   
-  // Row 4: Recent Activities + Lead Status + Email Stats
-  { key: "recentActivities", label: "Recent Activities", icon: <Activity className="w-4 h-4" />, visible: true, defaultLayout: { x: 0, y: 7, w: 4, h: 3 } },
-  { key: "leadStatus", label: "Lead Status Overview", icon: <BarChart3 className="w-4 h-4" />, visible: true, defaultLayout: { x: 4, y: 7, w: 4, h: 3 } },
-  { key: "emailStats", label: "Email Statistics", icon: <Mail className="w-4 h-4" />, visible: true, defaultLayout: { x: 8, y: 7, w: 4, h: 3 } },
+  // Row 4: Recent Activities + Email Stats
+  { key: "recentActivities", label: "Recent Activities", icon: <Activity className="w-4 h-4" />, visible: true, defaultLayout: { x: 0, y: 7, w: 6, h: 3 } },
+  { key: "emailStats", label: "Email Statistics", icon: <Mail className="w-4 h-4" />, visible: true, defaultLayout: { x: 6, y: 7, w: 6, h: 3 } },
   
   // Row 5: Weekly Summary + Follow-Ups Due
   { key: "weeklySummary", label: "Weekly Summary", icon: <ListTodo className="w-4 h-4" />, visible: true, defaultLayout: { x: 0, y: 10, w: 6, h: 2 } },
