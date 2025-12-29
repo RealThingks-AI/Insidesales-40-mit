@@ -17,6 +17,8 @@ import { TaskModal } from "./tasks/TaskModal";
 import { useTasks } from "@/hooks/useTasks";
 import { DealActionsDropdown } from "./DealActionsDropdown";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ListViewProps {
   deals: Deal[];
@@ -59,22 +61,31 @@ export const ListView = ({
   // Column customizer state
   const [columnCustomizerOpen, setColumnCustomizerOpen] = useState(false);
 
+  // Fetch all profiles for lead owner dropdown
+  const { data: allProfiles = [] } = useQuery({
+    queryKey: ['all-profiles'],
+    queryFn: async () => {
+      const { data } = await supabase.from('profiles').select('id, full_name');
+      return data || [];
+    },
+  });
+
   const [columns, setColumns] = useState<DealColumnConfig[]>([
     { field: 'project_name', label: 'Project', visible: true, order: 0 },
     { field: 'customer_name', label: 'Customer', visible: true, order: 1 },
     { field: 'lead_name', label: 'Lead Name', visible: true, order: 2 },
-    { field: 'lead_owner', label: 'Lead Owner', visible: true, order: 3 },
-    { field: 'stage', label: 'Stage', visible: true, order: 4 },
-    { field: 'priority', label: 'Priority', visible: true, order: 5 },
-    { field: 'total_contract_value', label: 'Value', visible: true, order: 6 },
-    { field: 'probability', label: 'Probability', visible: true, order: 7 },
-    { field: 'expected_closing_date', label: 'Expected Close', visible: true, order: 8 },
-    { field: 'region', label: 'Region', visible: false, order: 9 },
-    { field: 'project_duration', label: 'Duration', visible: false, order: 10 },
-    { field: 'start_date', label: 'Start Date', visible: false, order: 11 },
-    { field: 'end_date', label: 'End Date', visible: false, order: 12 },
-    { field: 'proposal_due_date', label: 'Proposal Due', visible: false, order: 13 },
-    { field: 'total_revenue', label: 'Total Revenue', visible: false, order: 14 },
+    { field: 'stage', label: 'Stage', visible: true, order: 3 },
+    { field: 'priority', label: 'Priority', visible: true, order: 4 },
+    { field: 'total_contract_value', label: 'Value', visible: true, order: 5 },
+    { field: 'probability', label: 'Probability', visible: true, order: 6 },
+    { field: 'expected_closing_date', label: 'Expected Close', visible: true, order: 7 },
+    { field: 'region', label: 'Region', visible: false, order: 8 },
+    { field: 'project_duration', label: 'Duration', visible: false, order: 9 },
+    { field: 'start_date', label: 'Start Date', visible: false, order: 10 },
+    { field: 'end_date', label: 'End Date', visible: false, order: 11 },
+    { field: 'proposal_due_date', label: 'Proposal Due', visible: false, order: 12 },
+    { field: 'total_revenue', label: 'Total Revenue', visible: false, order: 13 },
+    { field: 'lead_owner', label: 'Lead Owner', visible: true, order: 14 },
   ]);
 
   // Column width state
@@ -223,9 +234,10 @@ export const ListView = ({
     }
   };
 
-  const getFieldType = (field: string): 'text' | 'number' | 'date' | 'select' | 'textarea' | 'boolean' | 'stage' | 'priority' | 'currency' => {
+  const getFieldType = (field: string): 'text' | 'number' | 'date' | 'select' | 'textarea' | 'boolean' | 'stage' | 'priority' | 'currency' | 'userSelect' => {
     if (field === 'stage') return 'stage';
     if (field === 'priority') return 'priority';
+    if (field === 'lead_owner') return 'userSelect';
     if (['total_contract_value', 'total_revenue'].includes(field)) return 'currency';
     if (['expected_closing_date', 'start_date', 'end_date', 'proposal_due_date'].includes(field)) return 'date';
     if (['probability', 'project_duration'].includes(field)) return 'number';
@@ -537,6 +549,7 @@ export const ListView = ({
                         onSave={handleInlineEdit}
                         type={getFieldType(column.field)}
                         options={getFieldOptions(column.field)}
+                        userOptions={column.field === 'lead_owner' ? allProfiles : undefined}
                       />
                     </TableCell>
                   ))}
