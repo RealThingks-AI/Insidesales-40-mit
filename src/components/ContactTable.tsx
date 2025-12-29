@@ -106,7 +106,7 @@ export const ContactTable = ({
     }
   }, [searchParams]);
 
-  console.log('ContactTable: Rendering with contacts:', contacts.length);
+  console.log('ContactTable: Rendering with contacts count:', contacts.length);
 
   const fetchContacts = async () => {
     try {
