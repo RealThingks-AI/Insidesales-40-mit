@@ -90,7 +90,7 @@ export const ContactTable = ({
   const [itemsPerPage] = useState(50); // Default 50 contacts per page
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-  const [sourceFilter, setSourceFilter] = useState<string[]>([]);
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
 
   console.log('ContactTable: Rendering with contacts:', contacts.length);
 
@@ -160,11 +160,9 @@ export const ContactTable = ({
     );
 
     // Apply source filter
-    if (sourceFilter.length > 0) {
+    if (sourceFilter && sourceFilter !== "all") {
       filtered = filtered.filter(contact => 
-        sourceFilter.some(source => 
-          contact.contact_source?.toLowerCase() === source.toLowerCase()
-        )
+        contact.contact_source?.toLowerCase() === sourceFilter.toLowerCase()
       );
     }
 
@@ -190,7 +188,7 @@ export const ContactTable = ({
     setFilteredContacts(filtered);
     setCurrentPage(1);
     console.log('ContactTable: Filtered contacts:', filtered.length);
-  }, [contacts, searchTerm, sortField, sortDirection]);
+  }, [contacts, searchTerm, sortField, sortDirection, sourceFilter]);
 
   const handleSort = (field: string) => {
     if (sortField === field) {
