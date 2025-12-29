@@ -83,19 +83,19 @@ const defaultColumns: AccountColumnConfig[] = [{
   visible: true,
   order: 7
 }, {
-  field: 'account_owner',
-  label: 'Account Owner',
-  visible: true,
-  order: 8
-}, {
   field: 'region',
   label: 'Region',
   visible: false,
-  order: 9
+  order: 8
 }, {
   field: 'phone',
   label: 'Phone',
   visible: false,
+  order: 9
+}, {
+  field: 'account_owner',
+  label: 'Account Owner',
+  visible: true,
   order: 10
 }];
 interface AccountTableProps {

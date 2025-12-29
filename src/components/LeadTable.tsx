@@ -72,18 +72,18 @@ const defaultColumns: LeadColumnConfig[] = [{
   visible: true,
   order: 4
 }, {
-  field: 'contact_owner',
-  label: 'Lead Owner',
-  visible: true,
-  order: 5
-}, {
   field: 'lead_status',
   label: 'Lead Status',
   visible: true,
-  order: 6
+  order: 5
 }, {
   field: 'contact_source',
   label: 'Source',
+  visible: true,
+  order: 6
+}, {
+  field: 'contact_owner',
+  label: 'Lead Owner',
   visible: true,
   order: 7
 }];
