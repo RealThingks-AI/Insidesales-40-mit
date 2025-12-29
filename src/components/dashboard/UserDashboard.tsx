@@ -384,24 +384,25 @@ const UserDashboard = () => {
     enabled: !!user?.id
   });
 
-  // Contacts data - enhanced
+  // Contacts data - enhanced with contact_source
   const { data: contactsData, isLoading: contactsLoading } = useQuery({
     queryKey: ['user-contacts-enhanced', user?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.from('contacts').select('id, contact_name, email, phone_no, segment, created_time').eq('created_by', user?.id);
+      const { data, error } = await supabase.from('contacts').select('id, contact_name, email, phone_no, segment, contact_source, created_time').eq('created_by', user?.id);
       if (error) throw error;
       const contacts = data || [];
-      const withEmail = contacts.filter(c => c.email).length;
-      const withPhone = contacts.filter(c => c.phone_no).length;
-      const prospects = contacts.filter(c => c.segment === 'prospect').length;
-      const customers = contacts.filter(c => c.segment === 'customer').length;
-      const recentContact = contacts.sort((a, b) => new Date(b.created_time || 0).getTime() - new Date(a.created_time || 0).getTime())[0];
-      return { total: contacts.length, withEmail, withPhone, prospects, customers, recentContact: recentContact?.contact_name || null };
+      const bySource = {
+        website: contacts.filter(c => c.contact_source?.toLowerCase() === 'website').length,
+        referral: contacts.filter(c => c.contact_source?.toLowerCase() === 'referral').length,
+        linkedin: contacts.filter(c => c.contact_source?.toLowerCase() === 'linkedin').length,
+        other: contacts.filter(c => !['website', 'referral', 'linkedin'].includes(c.contact_source?.toLowerCase() || '')).length,
+      };
+      return { total: contacts.length, bySource };
     },
     enabled: !!user?.id
   });
 
-  // Deals data - enhanced
+  // Deals data - enhanced with stages RFQ, Offered, Won, Lost
   const { data: dealsData, isLoading: dealsLoading } = useQuery({
     queryKey: ['user-deals-enhanced', user?.id],
     queryFn: async () => {
@@ -413,15 +414,6 @@ const UserDashboard = () => {
       const totalPipeline = activeDeals.reduce((sum, d) => sum + (d.total_contract_value || 0), 0);
       const wonValue = wonDeals.reduce((sum, d) => sum + (d.total_contract_value || 0), 0);
       
-      // Deals closing this month
-      const now = new Date();
-      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      const closingThisMonth = activeDeals.filter(d => {
-        if (!d.expected_closing_date) return false;
-        const closeDate = new Date(d.expected_closing_date);
-        return closeDate <= monthEnd && closeDate >= now;
-      });
-      
       return {
         total: userDeals.length,
         active: activeDeals.length,
@@ -429,35 +421,31 @@ const UserDashboard = () => {
         lost: userDeals.filter(d => d.stage === 'Lost').length,
         totalPipeline,
         wonValue,
-        closingThisMonth: closingThisMonth.length,
-        closingValue: closingThisMonth.reduce((sum, d) => sum + (d.total_contract_value || 0), 0),
         byStage: {
-          lead: userDeals.filter(d => d.stage === 'Lead').length,
-          qualified: userDeals.filter(d => d.stage === 'Qualified').length,
-          discussions: userDeals.filter(d => d.stage === 'Discussions').length,
+          rfq: userDeals.filter(d => d.stage === 'RFQ').length,
+          offered: userDeals.filter(d => d.stage === 'Offered').length,
+          won: wonDeals.length,
+          lost: userDeals.filter(d => d.stage === 'Lost').length,
         }
       };
     },
     enabled: !!user?.id
   });
 
-  // Accounts data - enhanced
+  // Accounts data - enhanced with status counts
   const { data: accountsData, isLoading: accountsLoading } = useQuery({
     queryKey: ['user-accounts-enhanced', user?.id],
     queryFn: async () => {
-      const now = new Date();
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
       const { data, error } = await supabase.from('accounts').select('id, company_name, segment, status, created_at, total_revenue').eq('created_by', user?.id);
       if (error) throw error;
       const accounts = data || [];
-      const newThisMonth = accounts.filter(a => new Date(a.created_at || 0) >= monthStart).length;
-      const bySegment = {
-        prospect: accounts.filter(a => a.segment === 'prospect').length,
-        customer: accounts.filter(a => a.segment === 'customer').length,
-        partner: accounts.filter(a => a.segment === 'partner').length,
+      const byStatus = {
+        new: accounts.filter(a => a.status?.toLowerCase() === 'new').length,
+        working: accounts.filter(a => a.status?.toLowerCase() === 'working').length,
+        hot: accounts.filter(a => a.status?.toLowerCase() === 'hot').length,
+        nurture: accounts.filter(a => a.status?.toLowerCase() === 'nurture').length,
       };
-      const totalRevenue = accounts.reduce((sum, a) => sum + (a.total_revenue || 0), 0);
-      return { total: accounts.length, newThisMonth, bySegment, totalRevenue };
+      return { total: accounts.length, byStatus };
     },
     enabled: !!user?.id
   });
@@ -479,26 +467,33 @@ const UserDashboard = () => {
     enabled: !!user?.id
   });
 
-  // Upcoming meetings - enhanced
-  const { data: upcomingMeetings } = useQuery({
+  // Upcoming meetings - enhanced with status counts
+  const { data: upcomingMeetings, isLoading: meetingsLoading } = useQuery({
     queryKey: ['user-upcoming-meetings-enhanced', user?.id],
     queryFn: async () => {
-      const now = new Date().toISOString();
-      const weekFromNow = addDays(new Date(), 7).toISOString();
       const { data, error } = await supabase
         .from('meetings')
         .select('id, subject, start_time, end_time, status, attendees')
-        .eq('created_by', user?.id)
-        .gte('start_time', now)
-        .lte('start_time', weekFromNow)
-        .order('start_time', { ascending: true })
-        .limit(5);
+        .eq('created_by', user?.id);
       if (error) throw error;
-      return (data || []).map(m => ({
-        ...m,
-        isToday: isToday(new Date(m.start_time)),
-        attendeeCount: Array.isArray(m.attendees) ? m.attendees.length : 0
-      }));
+      const meetings = data || [];
+      const byStatus = {
+        scheduled: meetings.filter(m => m.status === 'scheduled').length,
+        completed: meetings.filter(m => m.status === 'completed').length,
+        cancelled: meetings.filter(m => m.status === 'cancelled').length,
+        pending: meetings.filter(m => m.status === 'pending').length,
+      };
+      const now = new Date().toISOString();
+      const upcoming = meetings
+        .filter(m => m.start_time >= now)
+        .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())
+        .slice(0, 5)
+        .map(m => ({
+          ...m,
+          isToday: isToday(new Date(m.start_time)),
+          attendeeCount: Array.isArray(m.attendees) ? m.attendees.length : 0
+        }));
+      return { meetings: upcoming, total: meetings.length, byStatus };
     },
     enabled: !!user?.id
   });
@@ -561,26 +556,27 @@ const UserDashboard = () => {
     enabled: !!user?.id
   });
 
-  // Task reminders
-  const { data: taskReminders } = useQuery({
+  // Task reminders with status counts
+  const { data: taskReminders, isLoading: tasksLoading } = useQuery({
     queryKey: ['user-task-reminders-enhanced', user?.id],
     queryFn: async () => {
-      const weekFromNow = format(addDays(new Date(), 7), 'yyyy-MM-dd');
-      const today = format(new Date(), 'yyyy-MM-dd');
       const { data, error } = await supabase
         .from('tasks')
         .select('id, title, due_date, priority, status')
-        .or(`assigned_to.eq.${user?.id},created_by.eq.${user?.id}`)
-        .in('status', ['open', 'in_progress'])
-        .lte('due_date', weekFromNow)
-        .order('due_date', { ascending: true })
-        .limit(10);
+        .or(`assigned_to.eq.${user?.id},created_by.eq.${user?.id}`);
       if (error) throw error;
       const tasks = data || [];
-      const overdue = tasks.filter(t => t.due_date && t.due_date < today).length;
+      const byStatus = {
+        open: tasks.filter(t => t.status === 'open').length,
+        inProgress: tasks.filter(t => t.status === 'in_progress').length,
+        completed: tasks.filter(t => t.status === 'completed').length,
+        deferred: tasks.filter(t => t.status === 'deferred').length,
+      };
+      const today = format(new Date(), 'yyyy-MM-dd');
+      const overdue = tasks.filter(t => t.due_date && t.due_date < today && ['open', 'in_progress'].includes(t.status)).length;
       const dueToday = tasks.filter(t => t.due_date === today).length;
-      const highPriority = tasks.filter(t => t.priority === 'high').length;
-      return { tasks: tasks.slice(0, 5), overdue, dueToday, highPriority, total: tasks.length };
+      const highPriority = tasks.filter(t => t.priority === 'high' && ['open', 'in_progress'].includes(t.status)).length;
+      return { tasks: tasks.slice(0, 5), overdue, dueToday, highPriority, total: tasks.length, byStatus };
     },
     enabled: !!user?.id
   });
@@ -804,21 +800,43 @@ const UserDashboard = () => {
 
       case "contacts":
         return (
-          <Card className="h-full hover:shadow-lg transition-shadow cursor-pointer animate-fade-in overflow-hidden" onClick={() => !isResizeMode && navigate('/contacts')}>
+          <Card className="h-full hover:shadow-lg transition-shadow animate-fade-in overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between py-2 px-3">
               <CardTitle className="text-sm font-medium">My Contacts</CardTitle>
-              <Users className="w-4 h-4 text-green-600" />
+              <Button variant="outline" size="sm" className="h-6 text-xs gap-1" onClick={() => !isResizeMode && setContactModalOpen(true)}>
+                <Plus className="w-3 h-3" /> Add Contact
+              </Button>
             </CardHeader>
-            <CardContent className="px-3 pb-3 pt-0 space-y-1.5">
-              <div className="text-lg font-bold">{contactsData?.total || 0}</div>
-              <div className="flex flex-wrap gap-1 text-[10px]">
-                <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">{contactsData?.withEmail || 0} w/ Email</span>
-                <span className="px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">{contactsData?.withPhone || 0} w/ Phone</span>
-              </div>
-              <div className="flex gap-2 text-[10px] text-muted-foreground">
-                <span>{contactsData?.prospects || 0} Prospects</span>
-                <span>•</span>
-                <span>{contactsData?.customers || 0} Customers</span>
+            <CardContent className="px-3 pb-3 pt-0">
+              <div className="grid grid-cols-2 gap-1.5">
+                <div 
+                  className="text-center p-2 bg-blue-50 dark:bg-blue-950/20 rounded cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-950/40 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); navigate('/contacts?source=Website'); }}
+                >
+                  <p className="text-lg font-bold text-blue-600">{contactsData?.bySource?.website || 0}</p>
+                  <p className="text-[10px] text-muted-foreground">Website</p>
+                </div>
+                <div 
+                  className="text-center p-2 bg-purple-50 dark:bg-purple-950/20 rounded cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-950/40 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); navigate('/contacts?source=Referral'); }}
+                >
+                  <p className="text-lg font-bold text-purple-600">{contactsData?.bySource?.referral || 0}</p>
+                  <p className="text-[10px] text-muted-foreground">Referral</p>
+                </div>
+                <div 
+                  className="text-center p-2 bg-cyan-50 dark:bg-cyan-950/20 rounded cursor-pointer hover:bg-cyan-100 dark:hover:bg-cyan-950/40 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); navigate('/contacts?source=LinkedIn'); }}
+                >
+                  <p className="text-lg font-bold text-cyan-600">{contactsData?.bySource?.linkedin || 0}</p>
+                  <p className="text-[10px] text-muted-foreground">LinkedIn</p>
+                </div>
+                <div 
+                  className="text-center p-2 bg-gray-50 dark:bg-gray-950/20 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-950/40 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); navigate('/contacts?source=Other'); }}
+                >
+                  <p className="text-lg font-bold text-gray-600">{contactsData?.bySource?.other || 0}</p>
+                  <p className="text-[10px] text-muted-foreground">Other</p>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -826,42 +844,87 @@ const UserDashboard = () => {
 
       case "deals":
         return (
-          <Card className="h-full hover:shadow-lg transition-shadow cursor-pointer animate-fade-in overflow-hidden" onClick={() => !isResizeMode && navigate('/deals')}>
+          <Card className="h-full hover:shadow-lg transition-shadow animate-fade-in overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between py-2 px-3">
               <CardTitle className="text-sm font-medium">My Deals</CardTitle>
-              <Briefcase className="w-4 h-4 text-purple-600" />
+              <Button variant="outline" size="sm" className="h-6 text-xs gap-1" onClick={() => !isResizeMode && navigate('/deals')}>
+                View All
+              </Button>
             </CardHeader>
-            <CardContent className="px-3 pb-3 pt-0 space-y-1.5">
-              <div className="flex items-baseline gap-2">
-                <span className="text-lg font-bold">{dealsData?.active || 0}</span>
-                <span className="text-xs text-muted-foreground">active</span>
+            <CardContent className="px-3 pb-3 pt-0">
+              <div className="grid grid-cols-2 gap-1.5">
+                <div 
+                  className="text-center p-2 bg-blue-50 dark:bg-blue-950/20 rounded cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-950/40 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); navigate('/deals?stage=RFQ'); }}
+                >
+                  <p className="text-lg font-bold text-blue-600">{dealsData?.byStage?.rfq || 0}</p>
+                  <p className="text-[10px] text-muted-foreground">RFQ</p>
+                </div>
+                <div 
+                  className="text-center p-2 bg-yellow-50 dark:bg-yellow-950/20 rounded cursor-pointer hover:bg-yellow-100 dark:hover:bg-yellow-950/40 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); navigate('/deals?stage=Offered'); }}
+                >
+                  <p className="text-lg font-bold text-yellow-600">{dealsData?.byStage?.offered || 0}</p>
+                  <p className="text-[10px] text-muted-foreground">Offered</p>
+                </div>
+                <div 
+                  className="text-center p-2 bg-green-50 dark:bg-green-950/20 rounded cursor-pointer hover:bg-green-100 dark:hover:bg-green-950/40 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); navigate('/deals?stage=Won'); }}
+                >
+                  <p className="text-lg font-bold text-green-600">{dealsData?.byStage?.won || 0}</p>
+                  <p className="text-[10px] text-muted-foreground">Won</p>
+                </div>
+                <div 
+                  className="text-center p-2 bg-red-50 dark:bg-red-950/20 rounded cursor-pointer hover:bg-red-100 dark:hover:bg-red-950/40 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); navigate('/deals?stage=Lost'); }}
+                >
+                  <p className="text-lg font-bold text-red-600">{dealsData?.byStage?.lost || 0}</p>
+                  <p className="text-[10px] text-muted-foreground">Lost</p>
+                </div>
               </div>
-              <div className="flex flex-wrap gap-1 text-[10px]">
-                <span className="px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">{dealsData?.won || 0} Won</span>
-                <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">{dealsData?.lost || 0} Lost</span>
-              </div>
-              <p className="text-[10px] text-muted-foreground">Pipeline: {formatCurrency(dealsData?.totalPipeline || 0)}</p>
             </CardContent>
           </Card>
         );
 
       case "accountsSummary":
         return (
-          <Card className="h-full hover:shadow-lg transition-shadow cursor-pointer animate-fade-in overflow-hidden" onClick={() => !isResizeMode && navigate('/accounts')}>
+          <Card className="h-full hover:shadow-lg transition-shadow animate-fade-in overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between py-2 px-3">
-              <CardTitle className="text-sm font-medium">Accounts</CardTitle>
-              <Building2 className="w-4 h-4 text-indigo-600" />
+              <CardTitle className="text-sm font-medium">My Accounts</CardTitle>
+              <Button variant="outline" size="sm" className="h-6 text-xs gap-1" onClick={() => !isResizeMode && setAccountModalOpen(true)}>
+                <Plus className="w-3 h-3" /> Add Account
+              </Button>
             </CardHeader>
-            <CardContent className="px-3 pb-3 pt-0 space-y-1.5">
-              <div className="flex items-baseline gap-2">
-                <span className="text-lg font-bold">{accountsData?.total || 0}</span>
-                {(accountsData?.newThisMonth || 0) > 0 && (
-                  <span className="text-[10px] text-green-600">+{accountsData?.newThisMonth} this month</span>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-1 text-[10px]">
-                <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">{accountsData?.bySegment?.prospect || 0} Prospect</span>
-                <span className="px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">{accountsData?.bySegment?.customer || 0} Customer</span>
+            <CardContent className="px-3 pb-3 pt-0">
+              <div className="grid grid-cols-2 gap-1.5">
+                <div 
+                  className="text-center p-2 bg-blue-50 dark:bg-blue-950/20 rounded cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-950/40 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); navigate('/accounts?status=New'); }}
+                >
+                  <p className="text-lg font-bold text-blue-600">{accountsData?.byStatus?.new || 0}</p>
+                  <p className="text-[10px] text-muted-foreground">New</p>
+                </div>
+                <div 
+                  className="text-center p-2 bg-yellow-50 dark:bg-yellow-950/20 rounded cursor-pointer hover:bg-yellow-100 dark:hover:bg-yellow-950/40 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); navigate('/accounts?status=Working'); }}
+                >
+                  <p className="text-lg font-bold text-yellow-600">{accountsData?.byStatus?.working || 0}</p>
+                  <p className="text-[10px] text-muted-foreground">Working</p>
+                </div>
+                <div 
+                  className="text-center p-2 bg-red-50 dark:bg-red-950/20 rounded cursor-pointer hover:bg-red-100 dark:hover:bg-red-950/40 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); navigate('/accounts?status=Hot'); }}
+                >
+                  <p className="text-lg font-bold text-red-600">{accountsData?.byStatus?.hot || 0}</p>
+                  <p className="text-[10px] text-muted-foreground">Hot</p>
+                </div>
+                <div 
+                  className="text-center p-2 bg-green-50 dark:bg-green-950/20 rounded cursor-pointer hover:bg-green-100 dark:hover:bg-green-950/40 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); navigate('/accounts?status=Nurture'); }}
+                >
+                  <p className="text-lg font-bold text-green-600">{accountsData?.byStatus?.nurture || 0}</p>
+                  <p className="text-[10px] text-muted-foreground">Nurture</p>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -937,9 +1000,6 @@ const UserDashboard = () => {
               <div className="text-lg font-bold">{formatCurrency(dealsData?.totalPipeline || 0)}</div>
               <div className="flex items-center justify-between text-[10px]">
                 <span className="text-muted-foreground">{dealsData?.active || 0} active deals</span>
-                {(dealsData?.closingThisMonth || 0) > 0 && (
-                  <span className="text-green-600 font-medium">{dealsData?.closingThisMonth} closing soon</span>
-                )}
               </div>
               <div className="flex items-center gap-2 text-[10px]">
                 <span className="text-green-600 font-medium">Won: {formatCurrency(dealsData?.wonValue || 0)}</span>
@@ -1009,104 +1069,88 @@ const UserDashboard = () => {
 
       case "upcomingMeetings":
         return (
-          <Card className="h-full animate-fade-in overflow-hidden">
+          <Card className="h-full hover:shadow-lg transition-shadow animate-fade-in overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between py-2 px-3">
-              <CardTitle className="flex items-center gap-1.5 text-sm font-medium">
-                <Calendar className="w-4 h-4 text-primary" />
-                Upcoming Meetings
-              </CardTitle>
-              <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={() => !isResizeMode && navigate('/meetings')}>View All</Button>
+              <CardTitle className="text-sm font-medium">My Meetings</CardTitle>
+              <Button variant="outline" size="sm" className="h-6 text-xs gap-1" onClick={() => !isResizeMode && setCreateMeetingModalOpen(true)}>
+                <Plus className="w-3 h-3" /> Add Meeting
+              </Button>
             </CardHeader>
             <CardContent className="px-3 pb-3 pt-0">
-              {upcomingMeetings && upcomingMeetings.length > 0 ? (
-                <div className="space-y-1">
-                  {upcomingMeetings.slice(0, 3).map((meeting: any) => (
-                    <div 
-                      key={meeting.id} 
-                      className={`p-1.5 rounded cursor-pointer transition-colors ${meeting.isToday ? 'bg-primary/10 border border-primary/20' : 'bg-muted/50 hover:bg-muted'}`}
-                      onClick={() => { if (!isResizeMode) { setSelectedMeeting(meeting); setMeetingModalOpen(true); }}}
-                    >
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs font-medium truncate flex-1">{meeting.subject}</p>
-                        {meeting.isToday && <span className="text-[10px] px-1 py-0.5 rounded bg-primary text-primary-foreground ml-1">Today</span>}
-                      </div>
-                      <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                        <span>{format(new Date(meeting.start_time), 'EEE, MMM d • HH:mm')}</span>
-                      </div>
-                    </div>
-                  ))}
+              <div className="grid grid-cols-2 gap-1.5">
+                <div 
+                  className="text-center p-2 bg-blue-50 dark:bg-blue-950/20 rounded cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-950/40 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); navigate('/meetings?status=scheduled'); }}
+                >
+                  <p className="text-lg font-bold text-blue-600">{upcomingMeetings?.byStatus?.scheduled || 0}</p>
+                  <p className="text-[10px] text-muted-foreground">Scheduled</p>
                 </div>
-              ) : (
-                <EmptyState
-                  title="No upcoming meetings"
-                  description="Schedule a meeting to get started"
-                  illustration="calendar"
-                  actionLabel="Schedule Meeting"
-                  onAction={() => !isResizeMode && setCreateMeetingModalOpen(true)}
-                  variant="compact"
-                />
-              )}
+                <div 
+                  className="text-center p-2 bg-yellow-50 dark:bg-yellow-950/20 rounded cursor-pointer hover:bg-yellow-100 dark:hover:bg-yellow-950/40 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); navigate('/meetings?status=pending'); }}
+                >
+                  <p className="text-lg font-bold text-yellow-600">{upcomingMeetings?.byStatus?.pending || 0}</p>
+                  <p className="text-[10px] text-muted-foreground">Pending</p>
+                </div>
+                <div 
+                  className="text-center p-2 bg-green-50 dark:bg-green-950/20 rounded cursor-pointer hover:bg-green-100 dark:hover:bg-green-950/40 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); navigate('/meetings?status=completed'); }}
+                >
+                  <p className="text-lg font-bold text-green-600">{upcomingMeetings?.byStatus?.completed || 0}</p>
+                  <p className="text-[10px] text-muted-foreground">Completed</p>
+                </div>
+                <div 
+                  className="text-center p-2 bg-red-50 dark:bg-red-950/20 rounded cursor-pointer hover:bg-red-100 dark:hover:bg-red-950/40 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); navigate('/meetings?status=cancelled'); }}
+                >
+                  <p className="text-lg font-bold text-red-600">{upcomingMeetings?.byStatus?.cancelled || 0}</p>
+                  <p className="text-[10px] text-muted-foreground">Cancelled</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
         );
 
       case "taskReminders":
         return (
-          <Card className="h-full animate-fade-in overflow-hidden">
+          <Card className="h-full hover:shadow-lg transition-shadow animate-fade-in overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between py-2 px-3">
-              <CardTitle className="flex items-center gap-1.5 text-sm font-medium">
-                <Bell className="w-4 h-4 text-primary" />
-                Task Reminders
-              </CardTitle>
-              <div className="flex gap-1 text-[10px]">
-                {(taskReminders?.overdue || 0) > 0 && (
-                  <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">{taskReminders?.overdue} overdue</span>
-                )}
-                {(taskReminders?.highPriority || 0) > 0 && (
-                  <span className="px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">{taskReminders?.highPriority} high</span>
-                )}
-              </div>
+              <CardTitle className="text-sm font-medium">My Tasks</CardTitle>
+              <Button variant="outline" size="sm" className="h-6 text-xs gap-1" onClick={() => { if (!isResizeMode) { setSelectedTask(null); setTaskModalOpen(true); }}}>
+                <Plus className="w-3 h-3" /> Add Task
+              </Button>
             </CardHeader>
             <CardContent className="px-3 pb-3 pt-0">
-              {taskReminders?.tasks && taskReminders.tasks.length > 0 ? (
-                <div className="space-y-1">
-                  {taskReminders.tasks.slice(0, 3).map((task: any) => {
-                    const isOverdue = task.due_date && isBefore(new Date(task.due_date), new Date());
-                    const isDueToday = task.due_date && isToday(new Date(task.due_date));
-                    return (
-                      <div 
-                        key={task.id} 
-                        className={`p-1.5 rounded cursor-pointer transition-colors ${
-                          isOverdue ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800' :
-                          isDueToday ? 'bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800' : 'bg-muted/50 hover:bg-muted'
-                        }`}
-                        onClick={() => { if (!isResizeMode) { setSelectedTask(task as Task); setTaskModalOpen(true); }}}
-                      >
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-medium truncate flex-1">{task.title}</p>
-                          <span className={`text-[10px] px-1 py-0.5 rounded font-medium ${
-                            task.priority === 'high' ? 'bg-red-500 text-white' :
-                            task.priority === 'medium' ? 'bg-amber-500 text-white' : 'bg-slate-500 text-white'
-                          }`}>{task.priority}</span>
-                        </div>
-                        <p className={`text-[10px] ${isOverdue ? 'text-red-600' : isDueToday ? 'text-orange-600' : 'text-muted-foreground'}`}>
-                          {isOverdue ? 'OVERDUE - ' : isDueToday ? 'Due Today - ' : ''}
-                          {task.due_date ? format(new Date(task.due_date), 'MMM d') : 'No date'}
-                        </p>
-                      </div>
-                    );
-                  })}
+              <div className="grid grid-cols-2 gap-1.5">
+                <div 
+                  className="text-center p-2 bg-blue-50 dark:bg-blue-950/20 rounded cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-950/40 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); navigate('/tasks?status=open'); }}
+                >
+                  <p className="text-lg font-bold text-blue-600">{taskReminders?.byStatus?.open || 0}</p>
+                  <p className="text-[10px] text-muted-foreground">Open</p>
                 </div>
-              ) : (
-                <EmptyState
-                  title="No pending tasks"
-                  description="You're all caught up!"
-                  illustration="tasks"
-                  actionLabel="Create Task"
-                  onAction={() => { if (!isResizeMode) { setSelectedTask(null); setTaskModalOpen(true); }}}
-                  variant="compact"
-                />
-              )}
+                <div 
+                  className="text-center p-2 bg-yellow-50 dark:bg-yellow-950/20 rounded cursor-pointer hover:bg-yellow-100 dark:hover:bg-yellow-950/40 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); navigate('/tasks?status=in_progress'); }}
+                >
+                  <p className="text-lg font-bold text-yellow-600">{taskReminders?.byStatus?.inProgress || 0}</p>
+                  <p className="text-[10px] text-muted-foreground">In Progress</p>
+                </div>
+                <div 
+                  className="text-center p-2 bg-green-50 dark:bg-green-950/20 rounded cursor-pointer hover:bg-green-100 dark:hover:bg-green-950/40 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); navigate('/tasks?status=completed'); }}
+                >
+                  <p className="text-lg font-bold text-green-600">{taskReminders?.byStatus?.completed || 0}</p>
+                  <p className="text-[10px] text-muted-foreground">Completed</p>
+                </div>
+                <div 
+                  className="text-center p-2 bg-gray-50 dark:bg-gray-950/20 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-950/40 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); navigate('/tasks?status=deferred'); }}
+                >
+                  <p className="text-lg font-bold text-gray-600">{taskReminders?.byStatus?.deferred || 0}</p>
+                  <p className="text-[10px] text-muted-foreground">Deferred</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
         );
