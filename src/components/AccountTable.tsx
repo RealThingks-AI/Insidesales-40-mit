@@ -106,6 +106,7 @@ interface AccountTableProps {
   selectedAccounts: string[];
   setSelectedAccounts: React.Dispatch<React.SetStateAction<string[]>>;
   onBulkDeleteComplete?: () => void;
+  initialStatus?: string;
 }
 const AccountTable = ({
   showColumnCustomizer,
@@ -114,7 +115,8 @@ const AccountTable = ({
   setShowModal,
   selectedAccounts,
   setSelectedAccounts,
-  onBulkDeleteComplete
+  onBulkDeleteComplete,
+  initialStatus = "all"
 }: AccountTableProps) => {
   const {
     toast
@@ -126,9 +128,14 @@ const AccountTable = ({
   const [filteredAccounts, setFilteredAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(initialStatus);
   const [ownerFilter, setOwnerFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+
+  // Sync statusFilter when initialStatus prop changes (from URL)
+  useEffect(() => {
+    setStatusFilter(initialStatus);
+  }, [initialStatus]);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [accountToDelete, setAccountToDelete] = useState<Account | null>(null);

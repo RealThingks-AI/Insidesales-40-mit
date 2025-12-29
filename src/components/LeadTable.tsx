@@ -120,6 +120,11 @@ const LeadTable = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState(initialStatus);
   const [ownerFilter, setOwnerFilter] = useState("all");
+
+  // Sync statusFilter when initialStatus prop changes (from URL)
+  useEffect(() => {
+    setStatusFilter(initialStatus);
+  }, [initialStatus]);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [leadToDelete, setLeadToDelete] = useState<Lead | null>(null);

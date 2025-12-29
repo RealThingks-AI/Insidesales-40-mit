@@ -26,6 +26,7 @@ interface ListViewProps {
   onUpdateDeal: (dealId: string, updates: Partial<Deal>) => void;
   onDeleteDeals: (dealIds: string[]) => void;
   onImportDeals: (deals: Partial<Deal>[]) => void;
+  initialStageFilter?: string;
 }
 
 export const ListView = ({ 
@@ -33,12 +34,13 @@ export const ListView = ({
   onDealClick, 
   onUpdateDeal, 
   onDeleteDeals, 
-  onImportDeals 
+  onImportDeals,
+  initialStageFilter = 'all'
 }: ListViewProps) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [leadOwnerFilter, setLeadOwnerFilter] = useState("all");
-  const [filters, setFilters] = useState<AdvancedFilterState>({
-    stages: [],
+  const [filters, setFilters] = useState<AdvancedFilterState>(() => ({
+    stages: initialStageFilter !== 'all' ? [initialStageFilter as DealStage] : [],
     regions: [],
     leadOwners: [],
     priorities: [],
@@ -46,12 +48,19 @@ export const ListView = ({
     handoffStatuses: [],
     searchTerm: "",
     probabilityRange: [0, 100],
-  });
+  }));
   const [sortBy, setSortBy] = useState<string>("modified_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [selectedDeals, setSelectedDeals] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(50);
+
+  // Sync stage filter when initialStageFilter prop changes (from URL)
+  useEffect(() => {
+    if (initialStageFilter !== 'all') {
+      setFilters(prev => ({ ...prev, stages: [initialStageFilter as DealStage] }));
+    }
+  }, [initialStageFilter]);
   
   // Task Modal state
   const [taskModalOpen, setTaskModalOpen] = useState(false);
