@@ -27,11 +27,35 @@ import { EmptyState } from "@/components/shared/EmptyState";
 
 const GRID_COLS = 12;
 
+// Utility: Build layouts from defaults for visible widgets, merging with any saved layouts
+const buildLayoutsWithDefaults = (savedLayouts: WidgetLayoutConfig, visibleKeys: WidgetKey[]): WidgetLayoutConfig => {
+  const result: WidgetLayoutConfig = {};
+  const defaults = new Map<WidgetKey, { x: number; y: number; w: number; h: number }>();
+  
+  // Build defaults map
+  DEFAULT_WIDGETS.forEach(w => {
+    defaults.set(w.key, w.defaultLayout);
+  });
+  
+  // For each visible widget, use saved layout or fall back to default
+  visibleKeys.forEach(key => {
+    const saved = savedLayouts[key];
+    const defaultLayout = defaults.get(key) || { x: 0, y: 0, w: 3, h: 2 };
+    
+    result[key] = saved ? { ...saved } : { ...defaultLayout };
+  });
+  
+  return result;
+};
+
 // Utility: Compact layouts to remove all gaps (both vertical and horizontal)
 const compactLayoutsUtil = (layouts: WidgetLayoutConfig, visibleKeys: WidgetKey[]): WidgetLayoutConfig => {
+  // First ensure all visible widgets have layouts (using defaults if needed)
+  const layoutsWithDefaults = buildLayoutsWithDefaults(layouts, visibleKeys);
+  
   const items = visibleKeys
-    .filter(key => layouts[key])
-    .map(key => ({ key, ...layouts[key] }))
+    .filter(key => layoutsWithDefaults[key])
+    .map(key => ({ key, ...layoutsWithDefaults[key] }))
     .sort((a, b) => a.y - b.y || a.x - b.x);
   
   const compacted: WidgetLayoutConfig = {};
@@ -157,25 +181,33 @@ const UserDashboard = () => {
   const [visibleWidgets, setVisibleWidgets] = useState<WidgetKey[]>(defaultVisibleWidgets);
   const [widgetOrder, setWidgetOrder] = useState<WidgetKey[]>(defaultWidgetKeys);
 
-  const parseWidgetLayouts = (): WidgetLayoutConfig => {
-    if (!dashboardPrefs?.layout_view) return {};
-    if (typeof dashboardPrefs.layout_view === "object") {
-      return dashboardPrefs.layout_view as WidgetLayoutConfig;
-    }
-    if (typeof dashboardPrefs.layout_view === "string") {
-      try {
-        const parsed = JSON.parse(dashboardPrefs.layout_view);
-        if (typeof parsed === "object" && parsed !== null) {
-          return parsed as WidgetLayoutConfig;
+  const parseWidgetLayouts = (visible?: WidgetKey[]): WidgetLayoutConfig => {
+    let savedLayouts: WidgetLayoutConfig = {};
+    
+    if (dashboardPrefs?.layout_view) {
+      if (typeof dashboardPrefs.layout_view === "object") {
+        savedLayouts = dashboardPrefs.layout_view as WidgetLayoutConfig;
+      } else if (typeof dashboardPrefs.layout_view === "string") {
+        try {
+          const parsed = JSON.parse(dashboardPrefs.layout_view);
+          if (typeof parsed === "object" && parsed !== null) {
+            savedLayouts = parsed as WidgetLayoutConfig;
+          }
+        } catch {
+          // Legacy string value - ignore
         }
-      } catch {
-        // Legacy string value
       }
     }
-    return {};
+    
+    // If we have visible widgets, ensure all have layouts
+    const widgetsToLayout = visible || defaultVisibleWidgets;
+    return compactLayoutsUtil(savedLayouts, widgetsToLayout);
   };
 
-  const [widgetLayouts, setWidgetLayouts] = useState<WidgetLayoutConfig>(parseWidgetLayouts());
+  // Initialize with compacted default layouts
+  const [widgetLayouts, setWidgetLayouts] = useState<WidgetLayoutConfig>(() => 
+    compactLayoutsUtil({}, defaultVisibleWidgets)
+  );
 
   useEffect(() => {
     setIsResizeMode(false);
@@ -207,8 +239,7 @@ const UserDashboard = () => {
     const missingVisible = nextVisible.filter((k) => !nextOrderBase.includes(k));
     const nextOrder = [...nextOrderBase, ...missingVisible];
 
-    const loadedLayouts = parseWidgetLayouts();
-    const compactedLayouts = compactLayoutsUtil(loadedLayouts, nextVisible);
+    const compactedLayouts = parseWidgetLayouts(nextVisible);
 
     setVisibleWidgets(nextVisible);
     setWidgetOrder(nextOrder);
