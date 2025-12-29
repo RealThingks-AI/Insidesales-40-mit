@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCRUDAudit } from "@/hooks/useCRUDAudit";
@@ -90,7 +91,11 @@ export const ContactTable = ({
   const [itemsPerPage] = useState(50); // Default 50 contacts per page
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-  const [sourceFilter, setSourceFilter] = useState<string>("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [sourceFilter, setSourceFilter] = useState<string>(() => {
+    const urlSource = searchParams.get('source');
+    return urlSource || "all";
+  });
 
   console.log('ContactTable: Rendering with contacts:', contacts.length);
 
