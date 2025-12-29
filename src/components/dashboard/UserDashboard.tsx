@@ -107,23 +107,12 @@ const UserDashboard = () => {
   useEffect(() => {
     const updateWidth = () => {
       if (containerRef.current) {
-        // Use full container width minus padding (p-6 = 24px each side = 48px total, but we're inside the padding)
-        setContainerWidth(containerRef.current.offsetWidth);
+        setContainerWidth(containerRef.current.offsetWidth - 48);
       }
     };
     updateWidth();
     window.addEventListener('resize', updateWidth);
-    
-    // Also observe resize changes for better responsiveness
-    const resizeObserver = new ResizeObserver(updateWidth);
-    if (containerRef.current) {
-      resizeObserver.observe(containerRef.current);
-    }
-    
-    return () => {
-      window.removeEventListener('resize', updateWidth);
-      resizeObserver.disconnect();
-    };
+    return () => window.removeEventListener('resize', updateWidth);
   }, []);
   
   const { data: userName } = useQuery({
