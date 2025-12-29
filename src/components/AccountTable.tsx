@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, X, Eye } from "lucide-react";
 import { RowActionsDropdown, Edit, Trash2, Mail } from "./RowActionsDropdown";
 import { AccountModal } from "./AccountModal";
@@ -19,6 +20,7 @@ import { AccountDeleteConfirmDialog } from "./AccountDeleteConfirmDialog";
 import { SendEmailModal, EmailRecipient } from "./SendEmailModal";
 import { AccountDetailModal } from "./accounts/AccountDetailModal";
 import { AccountScoreBadge, AccountSegmentBadge } from "./accounts/AccountScoreBadge";
+import { useQuery } from "@tanstack/react-query";
 export interface Account {
   id: string;
   company_name: string;
@@ -125,6 +127,7 @@ const AccountTable = ({
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [ownerFilter, setOwnerFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -138,6 +141,15 @@ const AccountTable = ({
   const [emailRecipient, setEmailRecipient] = useState<EmailRecipient | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [viewingAccount, setViewingAccount] = useState<Account | null>(null);
+
+  // Fetch all profiles for owner dropdown
+  const { data: allProfiles = [] } = useQuery({
+    queryKey: ['all-profiles'],
+    queryFn: async () => {
+      const { data } = await supabase.from('profiles').select('id, full_name');
+      return data || [];
+    },
+  });
   useEffect(() => {
     fetchAccounts();
   }, []);
@@ -145,6 +157,9 @@ const AccountTable = ({
     let filtered = accounts.filter(account => account.company_name?.toLowerCase().includes(searchTerm.toLowerCase()) || account.industry?.toLowerCase().includes(searchTerm.toLowerCase()) || account.country?.toLowerCase().includes(searchTerm.toLowerCase()));
     if (statusFilter !== "all") {
       filtered = filtered.filter(account => account.status === statusFilter);
+    }
+    if (ownerFilter !== "all") {
+      filtered = filtered.filter(account => account.created_by === ownerFilter);
     }
     if (tagFilter) {
       filtered = filtered.filter(account => account.tags?.includes(tagFilter));
@@ -159,7 +174,7 @@ const AccountTable = ({
     }
     setFilteredAccounts(filtered);
     setCurrentPage(1);
-  }, [accounts, searchTerm, statusFilter, tagFilter, sortField, sortDirection]);
+  }, [accounts, searchTerm, statusFilter, ownerFilter, tagFilter, sortField, sortDirection]);
   const handleSort = (field: string) => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
@@ -287,6 +302,19 @@ const AccountTable = ({
             <Input placeholder="Search accounts..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-9" inputSize="control" />
           </div>
           <AccountStatusFilter value={statusFilter} onValueChange={setStatusFilter} />
+          <Select value={ownerFilter} onValueChange={setOwnerFilter}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="All Owners" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Owners</SelectItem>
+              {allProfiles.map((profile) => (
+                <SelectItem key={profile.id} value={profile.id}>
+                  {profile.full_name || 'Unknown'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {tagFilter && <div className="flex items-center gap-2">
               <Badge variant="secondary" className="flex items-center gap-1">
                 Tag: {tagFilter}

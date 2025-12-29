@@ -96,6 +96,7 @@ export const ContactTable = ({
     const urlSource = searchParams.get('source');
     return urlSource || "all";
   });
+  const [ownerFilter, setOwnerFilter] = useState<string>("all");
 
   console.log('ContactTable: Rendering with contacts:', contacts.length);
 
@@ -171,6 +172,11 @@ export const ContactTable = ({
       );
     }
 
+    // Apply owner filter
+    if (ownerFilter && ownerFilter !== "all") {
+      filtered = filtered.filter(contact => contact.created_by === ownerFilter);
+    }
+
     // Apply sorting
     if (sortField) {
       filtered.sort((a, b) => {
@@ -193,7 +199,7 @@ export const ContactTable = ({
     setFilteredContacts(filtered);
     setCurrentPage(1);
     console.log('ContactTable: Filtered contacts:', filtered.length);
-  }, [contacts, searchTerm, sortField, sortDirection, sourceFilter]);
+  }, [contacts, searchTerm, sortField, sortDirection, sourceFilter, ownerFilter]);
 
   const handleSort = (field: string) => {
     if (sortField === field) {
@@ -280,6 +286,8 @@ export const ContactTable = ({
         onSort={handleSort}
         sourceFilter={sourceFilter}
         setSourceFilter={setSourceFilter}
+        ownerFilter={ownerFilter}
+        setOwnerFilter={setOwnerFilter}
       />
 
       <Card>
