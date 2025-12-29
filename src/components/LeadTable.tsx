@@ -93,6 +93,7 @@ interface LeadTableProps {
   setShowModal: (show: boolean) => void;
   selectedLeads: string[];
   setSelectedLeads: React.Dispatch<React.SetStateAction<string[]>>;
+  initialStatus?: string;
 }
 
 const LeadTable = ({
@@ -101,7 +102,8 @@ const LeadTable = ({
   showModal,
   setShowModal,
   selectedLeads,
-  setSelectedLeads
+  setSelectedLeads,
+  initialStatus = "New"
 }: LeadTableProps) => {
   const {
     toast
@@ -114,7 +116,7 @@ const LeadTable = ({
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("New");
+  const [statusFilter, setStatusFilter] = useState(initialStatus);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [leadToDelete, setLeadToDelete] = useState<Lead | null>(null);
