@@ -13,6 +13,7 @@ import { WidgetKey, WidgetLayoutConfig, DEFAULT_WIDGETS } from "./DashboardCusto
 import { ResizableDashboard } from "./ResizableDashboard";
 import { toast } from "sonner";
 import { format, isBefore, addDays, startOfWeek, endOfWeek, isToday } from "date-fns";
+import { getMeetingStatus } from "@/utils/meetingStatus";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -467,7 +468,7 @@ const UserDashboard = () => {
     enabled: !!user?.id
   });
 
-  // Upcoming meetings - enhanced with status counts
+  // Upcoming meetings - enhanced with status counts using getMeetingStatus for consistency
   const { data: upcomingMeetings, isLoading: meetingsLoading } = useQuery({
     queryKey: ['user-upcoming-meetings-enhanced', user?.id],
     queryFn: async () => {
@@ -477,15 +478,19 @@ const UserDashboard = () => {
         .eq('created_by', user?.id);
       if (error) throw error;
       const meetings = data || [];
+      const now = new Date();
+      
+      // Use getMeetingStatus for consistent status calculation (same as Meetings page)
       const byStatus = {
-        scheduled: meetings.filter(m => m.status === 'scheduled').length,
-        completed: meetings.filter(m => m.status === 'completed').length,
-        cancelled: meetings.filter(m => m.status === 'cancelled').length,
-        pending: meetings.filter(m => m.status === 'pending').length,
+        scheduled: meetings.filter(m => getMeetingStatus(m, now) === 'scheduled').length,
+        ongoing: meetings.filter(m => getMeetingStatus(m, now) === 'ongoing').length,
+        completed: meetings.filter(m => getMeetingStatus(m, now) === 'completed').length,
+        cancelled: meetings.filter(m => getMeetingStatus(m, now) === 'cancelled').length,
       };
-      const now = new Date().toISOString();
+      
+      // For upcoming meetings list, only show those that are scheduled or ongoing
       const upcoming = meetings
-        .filter(m => m.start_time >= now)
+        .filter(m => ['scheduled', 'ongoing'].includes(getMeetingStatus(m, now)))
         .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())
         .slice(0, 5)
         .map(m => ({
@@ -1087,10 +1092,10 @@ const UserDashboard = () => {
                 </div>
                 <div 
                   className="text-center p-2 bg-yellow-50 dark:bg-yellow-950/20 rounded cursor-pointer hover:bg-yellow-100 dark:hover:bg-yellow-950/40 transition-colors"
-                  onClick={(e) => { e.stopPropagation(); navigate('/meetings?status=pending'); }}
+                  onClick={(e) => { e.stopPropagation(); navigate('/meetings?status=ongoing'); }}
                 >
-                  <p className="text-lg font-bold text-yellow-600">{upcomingMeetings?.byStatus?.pending || 0}</p>
-                  <p className="text-[10px] text-muted-foreground">Pending</p>
+                  <p className="text-lg font-bold text-yellow-600">{upcomingMeetings?.byStatus?.ongoing || 0}</p>
+                  <p className="text-[10px] text-muted-foreground">Ongoing</p>
                 </div>
                 <div 
                   className="text-center p-2 bg-green-50 dark:bg-green-950/20 rounded cursor-pointer hover:bg-green-100 dark:hover:bg-green-950/40 transition-colors"
