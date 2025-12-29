@@ -1,16 +1,8 @@
 
-import { Search, ArrowUpDown, ArrowUp, ArrowDown, Filter } from "lucide-react";
+import { Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuCheckboxItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-  DropdownMenuLabel,
-} from "@/components/ui/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Contact {
   id: string;
@@ -18,18 +10,6 @@ interface Contact {
   company_name?: string;
   email?: string;
 }
-
-const CONTACT_SOURCES = [
-  "Website",
-  "Referral",
-  "LinkedIn",
-  "Cold Call",
-  "Trade Show",
-  "Email Campaign",
-  "Social Media",
-  "Partner",
-  "Other"
-];
 
 interface ContactTableHeaderProps {
   searchTerm: string;
@@ -40,8 +20,8 @@ interface ContactTableHeaderProps {
   sortField: string | null;
   sortDirection: 'asc' | 'desc';
   onSort: (field: string) => void;
-  sourceFilter: string[];
-  setSourceFilter: React.Dispatch<React.SetStateAction<string[]>>;
+  sourceFilter: string;
+  setSourceFilter: (value: string) => void;
 }
 
 export const ContactTableHeader = ({
@@ -69,18 +49,6 @@ export const ContactTableHeader = ({
     if (sortField !== field) return <ArrowUpDown className="w-4 h-4" />;
     return sortDirection === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />;
   };
-
-  const handleSourceToggle = (source: string) => {
-    setSourceFilter(prev => 
-      prev.includes(source) 
-        ? prev.filter(s => s !== source) 
-        : [...prev, source]
-    );
-  };
-
-  const clearSourceFilter = () => {
-    setSourceFilter([]);
-  };
   
   return (
     <div className="flex items-center justify-between">
@@ -96,45 +64,23 @@ export const ContactTableHeader = ({
           />
         </div>
         
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="h-9 gap-1.5">
-              <Filter className="w-4 h-4" />
-              Source
-              {sourceFilter.length > 0 && (
-                <span className="ml-1 px-1.5 py-0.5 text-xs bg-primary text-primary-foreground rounded-full">
-                  {sourceFilter.length}
-                </span>
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-48">
-            <DropdownMenuLabel>Filter by Source</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {CONTACT_SOURCES.map(source => (
-              <DropdownMenuCheckboxItem
-                key={source}
-                checked={sourceFilter.includes(source)}
-                onCheckedChange={() => handleSourceToggle(source)}
-              >
-                {source}
-              </DropdownMenuCheckboxItem>
-            ))}
-            {sourceFilter.length > 0 && (
-              <>
-                <DropdownMenuSeparator />
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="w-full justify-center text-xs"
-                  onClick={clearSourceFilter}
-                >
-                  Clear Filter
-                </Button>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Select value={sourceFilter || "all"} onValueChange={setSourceFilter}>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="All Sources" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Sources</SelectItem>
+            <SelectItem value="Website">Website</SelectItem>
+            <SelectItem value="Referral">Referral</SelectItem>
+            <SelectItem value="LinkedIn">LinkedIn</SelectItem>
+            <SelectItem value="Cold Call">Cold Call</SelectItem>
+            <SelectItem value="Trade Show">Trade Show</SelectItem>
+            <SelectItem value="Email Campaign">Email Campaign</SelectItem>
+            <SelectItem value="Social Media">Social Media</SelectItem>
+            <SelectItem value="Partner">Partner</SelectItem>
+            <SelectItem value="Other">Other</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
     </div>
   );
