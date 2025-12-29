@@ -93,9 +93,9 @@ export const ResizableDashboard = ({
   );
 
   return (
-    <div className="dashboard-grid">
+    <div className="dashboard-grid w-full">
       <GridLayout
-        className="layout"
+        className="layout w-full"
         layout={layout}
         width={Math.max(320, containerWidth)}
         gridConfig={{
@@ -176,8 +176,12 @@ export const ResizableDashboard = ({
       </GridLayout>
 
       <style>{`
+        .dashboard-grid {
+          width: 100%;
+        }
         .dashboard-grid .react-grid-layout {
           min-height: 200px;
+          width: 100% !important;
         }
 
         .dash-item {
