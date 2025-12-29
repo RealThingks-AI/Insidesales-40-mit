@@ -8,17 +8,20 @@ import { ContactTableBody } from "./contact-table/ContactTableBody";
 import { ContactTablePagination } from "./contact-table/ContactTablePagination";
 import { ContactModal } from "./ContactModal";
 import { ContactColumnCustomizer, ContactColumnConfig } from "./ContactColumnCustomizer";
+import { ContactDetailModal } from "./contacts/ContactDetailModal";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 interface Contact {
   id: string;
   contact_name: string;
   company_name?: string;
+  account_id?: string;
+  account_company_name?: string;
   position?: string;
   email?: string;
   phone_no?: string;
   mobile_no?: string;
-  region?: string; // Changed from country to region
+  region?: string;
   city?: string;
   state?: string;
   contact_owner?: string;
@@ -34,18 +37,22 @@ interface Contact {
   no_of_employees?: number;
   created_by?: string;
   modified_by?: string;
+  tags?: string[];
+  score?: number;
+  segment?: string;
+  email_opens?: number;
+  email_clicks?: number;
+  engagement_score?: number;
 }
 
 const defaultColumns: ContactColumnConfig[] = [
   { field: 'contact_name', label: 'Contact Name', visible: true, order: 0 },
-  { field: 'company_name', label: 'Company Name', visible: true, order: 1 },
+  { field: 'account_company_name', label: 'Company Account', visible: true, order: 1 },
   { field: 'position', label: 'Position', visible: true, order: 2 },
   { field: 'email', label: 'Email', visible: true, order: 3 },
-  { field: 'phone_no', label: 'Phone', visible: true, order: 4 },
-  { field: 'region', label: 'Region', visible: true, order: 5 },
+  { field: 'phone_no', label: 'Phone Number', visible: true, order: 4 },
+  { field: 'contact_source', label: 'Contact Source', visible: true, order: 5 },
   { field: 'contact_owner', label: 'Contact Owner', visible: true, order: 6 },
-  { field: 'industry', label: 'Industry', visible: true, order: 7 },
-  { field: 'contact_source', label: 'Source', visible: true, order: 8 },
 ];
 
 interface ContactTableProps {
@@ -74,6 +81,8 @@ export const ContactTable = ({
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
+  const [viewingContact, setViewingContact] = useState<Contact | null>(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [contactToDelete, setContactToDelete] = useState<string | null>(null);
   const [columns, setColumns] = useState(defaultColumns);
@@ -91,16 +100,27 @@ export const ContactTable = ({
       
       const { data, error } = await supabase
         .from('contacts')
-        .select('*')
+        .select(`
+          *,
+          accounts:account_id (
+            company_name
+          )
+        `)
         .order('created_time', { ascending: false });
+      
+      // Transform data to include account_company_name
+      const transformedData = (data || []).map(contact => ({
+        ...contact,
+        account_company_name: contact.accounts?.company_name || contact.company_name || null
+      }));
 
       if (error) {
         console.error('ContactTable: Supabase error:', error);
         throw error;
       }
       
-      console.log('ContactTable: Successfully fetched contacts:', data?.length || 0);
-      setContacts(data || []);
+      console.log('ContactTable: Successfully fetched contacts:', transformedData?.length || 0);
+      setContacts(transformedData || []);
       
     } catch (error) {
       console.error('ContactTable: Error fetching contacts:', error);
@@ -210,6 +230,12 @@ export const ContactTable = ({
     setShowModal(true);
   };
 
+  const handleViewContact = (contact: Contact) => {
+    console.log('ContactTable: Viewing contact:', contact.id);
+    setViewingContact(contact);
+    setShowDetailModal(true);
+  };
+
   const visibleColumns = columns.filter(col => col.visible);
   const totalPages = Math.ceil(filteredContacts.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -249,6 +275,7 @@ export const ContactTable = ({
           selectedContacts={selectedContacts}
           setSelectedContacts={setSelectedContacts}
           onEdit={handleEditContact}
+          onView={handleViewContact}
           onDelete={(id) => {
             setContactToDelete(id);
             setShowDeleteDialog(true);
@@ -280,6 +307,13 @@ export const ContactTable = ({
           fetchContacts();
           setEditingContact(null);
         }}
+      />
+
+      <ContactDetailModal
+        open={showDetailModal}
+        onOpenChange={setShowDetailModal}
+        contact={viewingContact as any}
+        onUpdate={fetchContacts}
       />
 
       <ContactColumnCustomizer

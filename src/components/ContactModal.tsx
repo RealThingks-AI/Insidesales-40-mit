@@ -11,19 +11,22 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { X, ChevronDown } from "lucide-react";
 
 const contactSchema = z.object({
-  contact_name: z.string().min(1, "Contact name is required"), // mandatory
-  company_name: z.string().optional(),
-  position: z.string().optional(),
-  email: z.string().email("Invalid email address").optional().or(z.literal("")), // optional now
-  phone_no: z.string().optional(),
-  linkedin: z.string().url("Invalid LinkedIn URL").optional().or(z.literal("")),
-  website: z.string().url("Invalid website URL").optional().or(z.literal("")),
+  contact_name: z.string()
+    .min(1, "Contact name is required")
+    .min(2, "Contact name must be at least 2 characters")
+    .max(100, "Contact name must be less than 100 characters"),
+  account_id: z.string().optional(),
+  position: z.string().max(100, "Position must be less than 100 characters").optional(),
+  email: z.string().email("Please enter a valid email address (e.g., name@company.com)").optional().or(z.literal("")),
+  phone_no: z.string().max(20, "Phone number must be less than 20 characters").optional(),
+  linkedin: z.string().url("Please enter a valid LinkedIn URL (e.g., https://linkedin.com/in/username)").optional().or(z.literal("")),
   contact_source: z.string().optional(),
-  industry: z.string().optional(),
-  region: z.string().optional(), // Changed from country to region
-  description: z.string().optional(),
+  description: z.string().max(1000, "Description must be less than 1000 characters").optional(),
 });
 
 type ContactFormData = z.infer<typeof contactSchema>;
@@ -31,6 +34,7 @@ type ContactFormData = z.infer<typeof contactSchema>;
 interface Contact {
   id: string;
   contact_name: string;
+  account_id?: string;
   company_name?: string;
   position?: string;
   email?: string;
@@ -41,6 +45,12 @@ interface Contact {
   industry?: string;
   region?: string;
   description?: string;
+  tags?: string[];
+}
+
+interface Account {
+  id: string;
+  company_name: string;
 }
 
 interface ContactModalProps {
@@ -59,71 +69,84 @@ const contactSources = [
   "Other"
 ];
 
-const industries = [
-  "Automotive",
-  "Technology",
-  "Manufacturing",
-  "Other"
-];
-
-const regions = [
-  "EU",
-  "US", 
-  "ASIA",
-  "Other"
+const tagOptions = [
+  "AUTOSAR", "Adaptive AUTOSAR", "Embedded Systems", "BSW", "ECU", "Zone Controller",
+  "HCP", "CI/CD", "V&V Testing", "Integration", "Software Architecture", "LINUX",
+  "QNX", "Cybersecurity", "FuSa", "OTA", "Diagnostics", "Vehicle Network",
+  "Vehicle Architecture", "Connected Car", "Platform", "µC/HW"
 ];
 
 export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: ContactModalProps) => {
   const { toast } = useToast();
   const { logCreate, logUpdate } = useCRUDAudit();
   const [loading, setLoading] = useState(false);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [accountSearch, setAccountSearch] = useState("");
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+
+  const toggleTag = (tag: string) => {
+    setSelectedTags(prev => 
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    );
+  };
 
   const form = useForm<ContactFormData>({
     resolver: zodResolver(contactSchema),
     defaultValues: {
       contact_name: "",
-      company_name: "",
+      account_id: "",
       position: "",
       email: "",
       phone_no: "",
       linkedin: "",
-      website: "",
       contact_source: "",
-      industry: "Automotive",
-      region: "EU",
       description: "",
     },
   });
+
+  // Fetch accounts for dropdown
+  useEffect(() => {
+    const fetchAccounts = async () => {
+      const { data, error } = await supabase
+        .from('accounts')
+        .select('id, company_name')
+        .order('company_name', { ascending: true });
+      
+      if (!error && data) {
+        setAccounts(data);
+      }
+    };
+    
+    if (open) {
+      fetchAccounts();
+    }
+  }, [open]);
 
   useEffect(() => {
     if (contact) {
       form.reset({
         contact_name: contact.contact_name || "",
-        company_name: contact.company_name || "",
+        account_id: contact.account_id || "",
         position: contact.position || "",
         email: contact.email || "",
         phone_no: contact.phone_no || "",
         linkedin: contact.linkedin || "",
-        website: contact.website || "",
         contact_source: contact.contact_source || "",
-        industry: contact.industry || "Automotive",
-        region: contact.region || "EU",
         description: contact.description || "",
       });
+      setSelectedTags(contact.tags || []);
     } else {
       form.reset({
         contact_name: "",
-        company_name: "",
+        account_id: "",
         position: "",
         email: "",
         phone_no: "",
         linkedin: "",
-        website: "",
         contact_source: "",
-        industry: "Automotive",
-        region: "EU",
         description: "",
       });
+      setSelectedTags([]);
     }
   }, [contact, form]);
 
@@ -141,25 +164,27 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
         return;
       }
 
+      // Get company_name from selected account
+      const selectedAccount = accounts.find(acc => acc.id === data.account_id);
+      
       const contactData = {
         contact_name: data.contact_name,
-        company_name: data.company_name || null,
+        account_id: data.account_id || null,
+        company_name: selectedAccount?.company_name || null,
         position: data.position || null,
         email: data.email || null,
         phone_no: data.phone_no || null,
         linkedin: data.linkedin || null,
-        website: data.website || null,
         contact_source: data.contact_source || null,
-        industry: data.industry || null,
-        region: data.region || null,
         description: data.description || null,
+        tags: selectedTags,
         created_by: user.data.user.id,
         modified_by: user.data.user.id,
         contact_owner: user.data.user.id,
       };
 
       if (contact) {
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from('contacts')
           .update({
             ...contactData,
@@ -171,7 +196,6 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
 
         if (error) throw error;
 
-        // Log update operation
         await logUpdate('contacts', contact.id, contactData, contact);
 
         toast({
@@ -179,7 +203,7 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
           description: "Contact updated successfully",
         });
       } else {
-        const { data, error } = await supabase
+        const { data: newContact, error } = await supabase
           .from('contacts')
           .insert(contactData)
           .select()
@@ -187,8 +211,7 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
 
         if (error) throw error;
 
-        // Log create operation
-        await logCreate('contacts', data.id, contactData);
+        await logCreate('contacts', newContact.id, contactData);
 
         toast({
           title: "Success",
@@ -209,6 +232,10 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
       setLoading(false);
     }
   };
+
+  const filteredAccounts = accounts.filter(account =>
+    account.company_name.toLowerCase().includes(accountSearch.toLowerCase())
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -238,13 +265,37 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
 
               <FormField
                 control={form.control}
-                name="company_name"
+                name="account_id"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Company Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Company Name" {...field} />
-                    </FormControl>
+                    <FormLabel>Company Account</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select account" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <div className="px-2 py-1">
+                          <Input
+                            placeholder="Search accounts..."
+                            value={accountSearch}
+                            onChange={(e) => setAccountSearch(e.target.value)}
+                            inputSize="control"
+                          />
+                        </div>
+                        {filteredAccounts.map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            {account.company_name}
+                          </SelectItem>
+                        ))}
+                        {filteredAccounts.length === 0 && (
+                          <div className="px-2 py-4 text-sm text-muted-foreground text-center">
+                            No accounts found
+                          </div>
+                        )}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -308,20 +359,6 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
 
               <FormField
                 control={form.control}
-                name="website"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Website</FormLabel>
-                    <FormControl>
-                      <Input placeholder="https://example.com" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
                 name="contact_source"
                 render={({ field }) => (
                   <FormItem>
@@ -344,56 +381,57 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
                   </FormItem>
                 )}
               />
+            </div>
 
-              <FormField
-                control={form.control}
-                name="industry"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Industry</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select industry" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {industries.map((industry) => (
-                          <SelectItem key={industry} value={industry}>
-                            {industry}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="region"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Region</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select region" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {regions.map((region) => (
-                          <SelectItem key={region} value={region}>
-                            {region}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            {/* Tags Multi-select */}
+            <div className="space-y-2">
+              <FormLabel>Tags</FormLabel>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    className="w-full justify-between h-auto min-h-10"
+                  >
+                    <div className="flex flex-wrap gap-1 flex-1">
+                      {selectedTags.length > 0 ? (
+                        selectedTags.slice(0, 3).map((tag) => (
+                          <Badge key={tag} variant="secondary" className="text-xs">
+                            {tag}
+                          </Badge>
+                        ))
+                      ) : (
+                        <span className="text-muted-foreground">Select tags...</span>
+                      )}
+                      {selectedTags.length > 3 && (
+                        <Badge variant="secondary" className="text-xs">
+                          +{selectedTags.length - 3} more
+                        </Badge>
+                      )}
+                    </div>
+                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[400px] p-0 bg-popover z-50" align="start">
+                  <div className="p-3 max-h-[300px] overflow-y-auto">
+                    <div className="flex flex-wrap gap-2">
+                      {tagOptions.map((tag) => (
+                        <Badge
+                          key={tag}
+                          variant={selectedTags.includes(tag) ? "default" : "outline"}
+                          className="cursor-pointer hover:opacity-80 transition-opacity"
+                          onClick={() => toggleTag(tag)}
+                        >
+                          {tag}
+                          {selectedTags.includes(tag) && (
+                            <X className="w-3 h-3 ml-1" />
+                          )}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
 
             <FormField
@@ -423,7 +461,12 @@ export const ContactModal = ({ open, onOpenChange, contact, onSuccess }: Contact
                 Cancel
               </Button>
               <Button type="submit" disabled={loading}>
-                {loading ? "Saving..." : contact ? "Save Changes" : "Add Contact"}
+                {loading ? (
+                  <>
+                    <span className="animate-spin mr-2">⏳</span>
+                    {contact ? "Saving..." : "Creating..."}
+                  </>
+                ) : contact ? "Save Changes" : "Add Contact"}
               </Button>
             </div>
           </form>

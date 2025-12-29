@@ -3,33 +3,39 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCRUDAudit } from "@/hooks/useCRUDAudit";
 import { useUserDisplayNames } from "@/hooks/useUserDisplayNames";
+import { useUserRole } from "@/hooks/useUserRole";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Search, Edit, Trash2, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, RefreshCw, ListTodo } from "lucide-react";
+import { Search, ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, CalendarPlus, CheckSquare, FileText, Plus } from "lucide-react";
+import { RowActionsDropdown, Edit, Trash2, Mail, RefreshCw } from "./RowActionsDropdown";
 import { LeadModal } from "./LeadModal";
 import { LeadColumnCustomizer, LeadColumnConfig } from "./LeadColumnCustomizer";
 import { LeadStatusFilter } from "./LeadStatusFilter";
 import { ConvertToDealModal } from "./ConvertToDealModal";
-import { LeadActionItemsModal } from "./LeadActionItemsModal";
 import { LeadDeleteConfirmDialog } from "./LeadDeleteConfirmDialog";
+import { AccountViewModal } from "./AccountViewModal";
+import { SendEmailModal, EmailRecipient } from "./SendEmailModal";
+import { MeetingModal } from "./MeetingModal";
+import { TaskModal } from "./tasks/TaskModal";
+import { useTasks } from "@/hooks/useTasks";
 
 interface Lead {
   id: string;
   lead_name: string;
   company_name?: string;
+  account_company_name?: string;
+  account_id?: string;
   position?: string;
   email?: string;
   phone_no?: string;
-  country?: string;
   contact_owner?: string;
   created_time?: string;
   modified_time?: string;
   lead_status?: string;
-  industry?: string;
   contact_source?: string;
   linkedin?: string;
   website?: string;
@@ -44,7 +50,7 @@ const defaultColumns: LeadColumnConfig[] = [{
   visible: true,
   order: 0
 }, {
-  field: 'company_name',
+  field: 'account_company_name',
   label: 'Company Name',
   visible: true,
   order: 1
@@ -64,30 +70,20 @@ const defaultColumns: LeadColumnConfig[] = [{
   visible: true,
   order: 4
 }, {
-  field: 'country',
-  label: 'Region',
-  visible: true,
-  order: 5
-}, {
   field: 'contact_owner',
   label: 'Lead Owner',
   visible: true,
-  order: 6
+  order: 5
 }, {
   field: 'lead_status',
   label: 'Lead Status',
   visible: true,
-  order: 7
-}, {
-  field: 'industry',
-  label: 'Industry',
-  visible: true,
-  order: 8
+  order: 6
 }, {
   field: 'contact_source',
   label: 'Source',
   visible: true,
-  order: 9
+  order: 7
 }];
 
 interface LeadTableProps {
@@ -113,6 +109,7 @@ const LeadTable = ({
   const {
     logDelete
   } = useCRUDAudit();
+  const { userRole } = useUserRole();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -128,8 +125,16 @@ const LeadTable = ({
   const [leadToConvert, setLeadToConvert] = useState<Lead | null>(null);
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-  const [showActionItemsModal, setShowActionItemsModal] = useState(false);
-  const [selectedLeadForActions, setSelectedLeadForActions] = useState<Lead | null>(null);
+  const [viewAccountId, setViewAccountId] = useState<string | null>(null);
+  const [accountViewOpen, setAccountViewOpen] = useState(false);
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [emailRecipient, setEmailRecipient] = useState<EmailRecipient | null>(null);
+  const [meetingModalOpen, setMeetingModalOpen] = useState(false);
+  const [meetingLead, setMeetingLead] = useState<Lead | null>(null);
+  const [taskModalOpen, setTaskModalOpen] = useState(false);
+  const [taskLeadId, setTaskLeadId] = useState<string | null>(null);
+  
+  const { createTask } = useTasks();
 
   useEffect(() => {
     fetchLeads();
@@ -165,7 +170,7 @@ const LeadTable = ({
 
   const getSortIcon = (field: string) => {
     if (sortField !== field) {
-      return <ArrowUpDown className="w-4 h-4" />;
+      return <ArrowUpDown className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />;
     }
     return sortDirection === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />;
   };
@@ -176,11 +181,23 @@ const LeadTable = ({
       const {
         data,
         error
-      } = await supabase.from('leads').select('*').order('created_time', {
+      } = await supabase.from('leads').select(`
+        *,
+        accounts:account_id (
+          company_name
+        )
+      `).order('created_time', {
         ascending: false
       });
       if (error) throw error;
-      setLeads(data || []);
+      
+      // Transform data to include account_company_name
+      const transformedData = (data || []).map(lead => ({
+        ...lead,
+        account_company_name: lead.accounts?.company_name || lead.company_name || null
+      }));
+      
+      setLeads(transformedData);
     } catch (error) {
       toast({
         title: "Error",
@@ -342,18 +359,18 @@ const LeadTable = ({
     setLeadToConvert(null);
   };
 
-  const handleActionItems = (lead: Lead) => {
-    setSelectedLeadForActions(lead);
-    setShowActionItemsModal(true);
+  const handleCreateTask = (lead: Lead) => {
+    setTaskLeadId(lead.id);
+    setTaskModalOpen(true);
   };
 
   return <div className="space-y-6">
       {/* Header and Actions */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-            <Input placeholder="Search leads..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10 w-80" />
+          <div className="relative w-64">
+            <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4 pointer-events-none" />
+            <Input placeholder="Search leads..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-9" inputSize="control" />
           </div>
           <LeadStatusFilter value={statusFilter} onValueChange={setStatusFilter} />
         </div>
@@ -371,7 +388,7 @@ const LeadTable = ({
                   </div>
                 </TableHead>
                 {visibleColumns.map(column => <TableHead key={column.field} className="text-left font-bold text-foreground bg-muted/50 px-4 py-3 whitespace-nowrap">
-                    <div className="flex items-center gap-2 cursor-pointer hover:text-primary" onClick={() => handleSort(column.field)}>
+                    <div className="group flex items-center gap-2 cursor-pointer hover:text-primary" onClick={() => handleSort(column.field)}>
                       {column.label}
                       {getSortIcon(column.field)}
                     </div>
@@ -384,13 +401,30 @@ const LeadTable = ({
             <TableBody>
               {loading ? <TableRow>
                   <TableCell colSpan={visibleColumns.length + 2} className="text-center py-8">
-                    Loading leads...
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                      <span className="text-muted-foreground">Loading leads...</span>
+                    </div>
                   </TableCell>
                 </TableRow> : pageLeads.length === 0 ? <TableRow>
-                  <TableCell colSpan={visibleColumns.length + 2} className="text-center py-8">
-                    No leads found
+                  <TableCell colSpan={visibleColumns.length + 2} className="text-center py-12">
+                    <div className="flex flex-col items-center gap-3">
+                      <FileText className="w-10 h-10 text-muted-foreground/50" />
+                      <div>
+                        <p className="font-medium text-foreground">No leads found</p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {searchTerm ? "Try adjusting your search criteria" : "Get started by adding your first lead"}
+                        </p>
+                      </div>
+                      {!searchTerm && (
+                        <Button size="sm" onClick={() => setShowModal(true)} className="mt-2">
+                          <Plus className="w-4 h-4 mr-1" />
+                          Add First Lead
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
-                </TableRow> : pageLeads.map(lead => <TableRow key={lead.id} className="hover:bg-muted/20 border-b">
+                </TableRow> : pageLeads.map(lead => <TableRow key={lead.id} className="hover:bg-muted/20 border-b" data-state={selectedLeads.includes(lead.id) ? "selected" : undefined}>
                     <TableCell className="text-center px-4 py-3">
                       <div className="flex justify-center">
                         <Checkbox checked={selectedLeads.includes(lead.id)} onCheckedChange={checked => handleSelectLead(lead.id, checked as boolean)} />
@@ -402,35 +436,84 @@ const LeadTable = ({
                   setShowModal(true);
                 }} className="text-primary hover:underline font-medium text-left truncate block w-full">
                             {lead[column.field as keyof Lead] || '-'}
+                          </button> : column.field === 'account_company_name' ? <button 
+                            onClick={() => {
+                              if (lead.account_id) {
+                                setViewAccountId(lead.account_id);
+                                setAccountViewOpen(true);
+                              }
+                            }} 
+                            className="text-primary hover:underline font-medium text-left truncate block w-full"
+                            title={lead.account_company_name || undefined}
+                          >
+                            {lead.account_company_name || '-'}
                           </button> : column.field === 'contact_owner' ? <span className="truncate block">
                             {lead.created_by ? displayNames[lead.created_by] || "Loading..." : '-'}
-                          </span> : column.field === 'lead_status' && lead.lead_status ? <Badge variant={lead.lead_status === 'New' ? 'secondary' : lead.lead_status === 'Contacted' ? 'default' : lead.lead_status === 'Converted' ? 'outline' : 'outline'} className="whitespace-nowrap">
+                          </span> : column.field === 'lead_status' && lead.lead_status ? <Badge variant={lead.lead_status === 'New' ? 'secondary' : lead.lead_status === 'Attempted' ? 'default' : lead.lead_status === 'Follow-up' ? 'default' : lead.lead_status === 'Qualified' ? 'outline' : lead.lead_status === 'Disqualified' ? 'destructive' : 'outline'} className="whitespace-nowrap">
                             {lead.lead_status}
                           </Badge> : <span className="truncate block" title={lead[column.field as keyof Lead]?.toString() || '-'}>
                             {lead[column.field as keyof Lead] || '-'}
                           </span>}
                       </TableCell>)}
-                    <TableCell className="w-48 px-4 py-3">
-                      <div className="flex items-center justify-center gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => {
-                    setEditingLead(lead);
-                    setShowModal(true);
-                  }} title="Edit lead" className="h-8 w-8 p-0">
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => {
-                    console.log('Setting lead to delete:', lead);
-                    setLeadToDelete(lead);
-                    setShowDeleteDialog(true);
-                  }} title="Delete lead" className="h-8 w-8 p-0">
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleConvertToDeal(lead)} disabled={lead.lead_status === 'Converted'} title="Convert to deal" className="h-8 w-8 p-0">
-                          <RefreshCw className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleActionItems(lead)} title="Action items" className="h-8 w-8 p-0">
-                          <ListTodo className="w-4 h-4" />
-                        </Button>
+                    <TableCell className="w-20 px-4 py-3">
+                      <div className="flex items-center justify-center">
+                        <RowActionsDropdown
+                          actions={[
+                            {
+                              label: "Edit",
+                              icon: <Edit className="w-4 h-4" />,
+                              onClick: () => {
+                                setEditingLead(lead);
+                                setShowModal(true);
+                              }
+                            },
+                            {
+                              label: "Send Email",
+                              icon: <Mail className="w-4 h-4" />,
+                              onClick: () => {
+                                setEmailRecipient({
+                                  name: lead.lead_name,
+                                  email: lead.email,
+                                  company_name: lead.company_name || lead.account_company_name,
+                                  position: lead.position,
+                                });
+                                setEmailModalOpen(true);
+                              },
+                              disabled: !lead.email
+                            },
+                            {
+                              label: "Create Meeting",
+                              icon: <CalendarPlus className="w-4 h-4" />,
+                              onClick: () => {
+                                setMeetingLead(lead);
+                                setMeetingModalOpen(true);
+                              }
+                            },
+                            {
+                              label: "Create Task",
+                              icon: <CheckSquare className="w-4 h-4" />,
+                              onClick: () => handleCreateTask(lead)
+                            },
+                            ...(userRole !== 'user' ? [{
+                              label: "Convert to Deal",
+                              icon: <RefreshCw className="w-4 h-4" />,
+                              onClick: () => handleConvertToDeal(lead),
+                              disabled: lead.lead_status === 'Converted',
+                              separator: true
+                            }] : []),
+                            {
+                              label: "Delete",
+                              icon: <Trash2 className="w-4 h-4" />,
+                              onClick: () => {
+                                console.log('Setting lead to delete:', lead);
+                                setLeadToDelete(lead);
+                                setShowDeleteDialog(true);
+                              },
+                              destructive: true,
+                              separator: userRole === 'user'
+                            }
+                          ]}
+                        />
                       </div>
                     </TableCell>
                   </TableRow>)}
@@ -439,18 +522,18 @@ const LeadTable = ({
         </div>
       </Card>
 
-      {totalPages > 1 && <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">
-              Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, filteredLeads.length)} of {filteredLeads.length} leads
-            </span>
-          </div>
+      {/* Always show pagination info */}
+      <div className="flex items-center justify-between py-2">
+        <span className="text-sm font-medium text-foreground">
+          Showing {filteredLeads.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}-{Math.min(currentPage * itemsPerPage, filteredLeads.length)} of {filteredLeads.length} leads
+        </span>
+        {totalPages > 1 && (
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1}>
               <ChevronLeft className="w-4 h-4" />
               Previous
             </Button>
-            <span className="text-sm">
+            <span className="text-sm bg-muted px-3 py-1 rounded-md font-medium">
               Page {currentPage} of {totalPages}
             </span>
             <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))} disabled={currentPage === totalPages}>
@@ -458,7 +541,8 @@ const LeadTable = ({
               <ChevronRight className="w-4 h-4" />
             </Button>
           </div>
-        </div>}
+        )}
+      </div>
 
       <LeadModal open={showModal} onOpenChange={setShowModal} lead={editingLead} onSuccess={() => {
       fetchLeads();
@@ -469,12 +553,46 @@ const LeadTable = ({
 
       <ConvertToDealModal open={showConvertModal} onOpenChange={setShowConvertModal} lead={leadToConvert} onSuccess={handleConvertSuccess} />
 
-      <LeadActionItemsModal open={showActionItemsModal} onOpenChange={setShowActionItemsModal} lead={selectedLeadForActions} />
+      <TaskModal
+        open={taskModalOpen}
+        onOpenChange={setTaskModalOpen}
+        onSubmit={createTask}
+        context={taskLeadId ? { module: 'leads', recordId: taskLeadId, locked: true } : undefined}
+      />
 
       <LeadDeleteConfirmDialog open={showDeleteDialog} onConfirm={handleDelete} onCancel={() => {
       setShowDeleteDialog(false);
       setLeadToDelete(null);
     }} leadName={leadToDelete?.lead_name} />
+
+      <AccountViewModal 
+        open={accountViewOpen} 
+        onOpenChange={setAccountViewOpen} 
+        accountId={viewAccountId} 
+      />
+
+      <SendEmailModal
+        open={emailModalOpen}
+        onOpenChange={setEmailModalOpen}
+        recipient={emailRecipient}
+      />
+
+      <MeetingModal
+        open={meetingModalOpen}
+        onOpenChange={setMeetingModalOpen}
+        meeting={meetingLead ? {
+          id: '',
+          subject: `Meeting with ${meetingLead.lead_name}`,
+          start_time: new Date().toISOString(),
+          end_time: new Date().toISOString(),
+          lead_id: meetingLead.id,
+          status: 'scheduled'
+        } : null}
+        onSuccess={() => {
+          setMeetingModalOpen(false);
+          setMeetingLead(null);
+        }}
+      />
     </div>;
 };
 

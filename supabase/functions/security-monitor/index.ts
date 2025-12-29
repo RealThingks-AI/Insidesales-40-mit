@@ -49,39 +49,45 @@ serve(async (req) => {
       details: SecurityEvent;
     }
 
+    type SecurityResult = {
+      severity: 'low' | 'medium' | 'high' | 'critical';
+      alert?: string;
+      action_required?: string;
+    }
+
     // Enhanced security monitoring logic
-    const securityChecks = {
-      'DATA_EXPORT': async (event: SecurityEvent) => {
+    const securityChecks: Record<string, (event: SecurityEvent) => Promise<SecurityResult>> = {
+      'DATA_EXPORT': async (event: SecurityEvent): Promise<SecurityResult> => {
         // Check for suspicious bulk exports
         if (event.details?.record_count > 1000) {
           return {
-            severity: 'high' as const,
+            severity: 'high',
             alert: 'Large data export detected',
             action_required: 'Review export request'
           }
         }
-        return { severity: 'low' as const }
+        return { severity: 'low' }
       },
 
-      'BULK_DELETE': async (event: SecurityEvent) => {
+      'BULK_DELETE': async (_event: SecurityEvent): Promise<SecurityResult> => {
         // Always flag bulk deletes as high severity
         return {
-          severity: 'critical' as const,
+          severity: 'critical',
           alert: 'Bulk delete operation detected',
           action_required: 'Immediate review required'
         }
       },
 
-      'ADMIN_ACTION': async (event: SecurityEvent) => {
+      'ADMIN_ACTION': async (_event: SecurityEvent): Promise<SecurityResult> => {
         // Log all admin actions
         return {
-          severity: 'medium' as const,
+          severity: 'medium',
           alert: 'Administrative action performed',
           action_required: 'Log for audit'
         }
       },
 
-      'FAILED_ACCESS': async (event: SecurityEvent) => {
+      'FAILED_ACCESS': async (_event: SecurityEvent): Promise<SecurityResult> => {
         // Check for repeated failed access attempts
         const { data: recentFailures } = await supabaseClient
           .from('security_audit_log')
@@ -93,19 +99,19 @@ serve(async (req) => {
 
         if (recentFailures && recentFailures.length >= 3) {
           return {
-            severity: 'high' as const,
+            severity: 'high',
             alert: 'Multiple failed access attempts detected',
             action_required: 'Possible unauthorized access attempt'
           }
         }
 
-        return { severity: 'medium' as const }
+        return { severity: 'medium' }
       }
     }
 
     // Process security event
-    const checkFunction = securityChecks[action as keyof typeof securityChecks]
-    let securityResult = { severity: 'low' as const }
+    const checkFunction = securityChecks[action]
+    let securityResult: SecurityResult = { severity: 'low' }
     
     if (checkFunction) {
       securityResult = await checkFunction(details)
@@ -157,10 +163,10 @@ serve(async (req) => {
       }
     )
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Security monitoring error:', error)
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 400,

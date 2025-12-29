@@ -7,14 +7,18 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import SecurityEnhancedApp from "@/components/SecurityEnhancedApp";
 import { AppSidebar } from "@/components/AppSidebar";
+import PageAccessGuard from "@/components/PageAccessGuard";
 import Dashboard from "./pages/Dashboard";
+import Accounts from "./pages/Accounts";
 import Contacts from "./pages/Contacts";
 import Leads from "./pages/Leads";
+import Meetings from "./pages/Meetings";
 import DealsPage from "./pages/DealsPage";
 import Settings from "./pages/Settings";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 import Notifications from "./pages/Notifications";
+import Tasks from "./pages/Tasks";
 import { useState } from "react";
 
 const queryClient = new QueryClient();
@@ -44,7 +48,7 @@ const FixedSidebarLayout = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-// Protected Route Component
+// Protected Route Component with Page Access Control
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
 
@@ -63,10 +67,12 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     return <Navigate to="/auth" replace />;
   }
 
-  // Use FixedSidebarLayout for all protected routes
+  // Use FixedSidebarLayout for all protected routes with Page Access Guard
   return (
     <FixedSidebarLayout>
-      {children}
+      <PageAccessGuard>
+        {children}
+      </PageAccessGuard>
     </FixedSidebarLayout>
   );
 };
@@ -102,9 +108,15 @@ const AppRouter = () => (
           <Auth />
         </AuthRoute>
       } />
-      <Route path="/" element={
+      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/dashboard" element={
         <ProtectedRoute>
           <Dashboard />
+        </ProtectedRoute>
+      } />
+      <Route path="/accounts" element={
+        <ProtectedRoute>
+          <Accounts />
         </ProtectedRoute>
       } />
       <Route path="/contacts" element={
@@ -117,6 +129,11 @@ const AppRouter = () => (
           <Leads />
         </ProtectedRoute>
       } />
+      <Route path="/meetings" element={
+        <ProtectedRoute>
+          <Meetings />
+        </ProtectedRoute>
+      } />
       <Route path="/deals" element={
         <ProtectedRoute>
           <DealsPage />
@@ -125,6 +142,11 @@ const AppRouter = () => (
       <Route path="/notifications" element={
         <ProtectedRoute>
           <Notifications />
+        </ProtectedRoute>
+      } />
+      <Route path="/tasks" element={
+        <ProtectedRoute>
+          <Tasks />
         </ProtectedRoute>
       } />
       <Route path="/settings" element={
