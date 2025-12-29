@@ -1,8 +1,9 @@
-
 import { Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Contact {
   id: string;
@@ -22,6 +23,8 @@ interface ContactTableHeaderProps {
   onSort: (field: string) => void;
   sourceFilter: string;
   setSourceFilter: (value: string) => void;
+  ownerFilter: string;
+  setOwnerFilter: (value: string) => void;
 }
 
 export const ContactTableHeader = ({
@@ -34,7 +37,9 @@ export const ContactTableHeader = ({
   sortDirection,
   onSort,
   sourceFilter,
-  setSourceFilter
+  setSourceFilter,
+  ownerFilter,
+  setOwnerFilter
 }: ContactTableHeaderProps) => {
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -49,6 +54,15 @@ export const ContactTableHeader = ({
     if (sortField !== field) return <ArrowUpDown className="w-4 h-4" />;
     return sortDirection === 'asc' ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />;
   };
+
+  // Fetch all profiles for owner dropdown
+  const { data: allProfiles = [] } = useQuery({
+    queryKey: ['all-profiles'],
+    queryFn: async () => {
+      const { data } = await supabase.from('profiles').select('id, full_name');
+      return data || [];
+    },
+  });
   
   return (
     <div className="flex items-center justify-between">
@@ -79,6 +93,20 @@ export const ContactTableHeader = ({
             <SelectItem value="Social Media">Social Media</SelectItem>
             <SelectItem value="Partner">Partner</SelectItem>
             <SelectItem value="Other">Other</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={ownerFilter} onValueChange={setOwnerFilter}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="All Owners" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Owners</SelectItem>
+            {allProfiles.map((profile) => (
+              <SelectItem key={profile.id} value={profile.id}>
+                {profile.full_name || 'Unknown'}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

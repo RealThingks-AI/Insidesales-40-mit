@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Deal, DealStage, DEAL_STAGES, STAGE_COLORS } from "@/types/deal";
 import { Search, Filter, X, ArrowUp, ArrowDown } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RowActionsDropdown, Edit, Trash2, CheckSquare } from "./RowActionsDropdown";
 import { format } from "date-fns";
 import { InlineEditCell } from "./InlineEditCell";
@@ -33,6 +34,7 @@ export const ListView = ({
   onImportDeals 
 }: ListViewProps) => {
   const [searchTerm, setSearchTerm] = useState("");
+  const [leadOwnerFilter, setLeadOwnerFilter] = useState("all");
   const [filters, setFilters] = useState<AdvancedFilterState>({
     stages: [],
     regions: [],
@@ -284,6 +286,9 @@ export const ListView = ({
         deal.customer_name?.toLowerCase().includes(allSearchTerms) ||
         deal.region?.toLowerCase().includes(allSearchTerms);
       
+      // Apply lead owner filter (standalone dropdown)
+      const matchesLeadOwnerDropdown = leadOwnerFilter === "all" || deal.lead_owner === leadOwnerFilter;
+      
       // Apply multi-select filters
       const matchesStages = filters.stages.length === 0 || filters.stages.includes(deal.stage);
       const matchesRegions = filters.regions.length === 0 || filters.regions.includes(deal.region || '');
@@ -296,7 +301,7 @@ export const ListView = ({
       const dealProbability = deal.probability || 0;
       const matchesProbabilityRange = dealProbability >= filters.probabilityRange[0] && dealProbability <= filters.probabilityRange[1];
       
-      return matchesSearch && matchesStages && matchesRegions && matchesLeadOwners && 
+      return matchesSearch && matchesLeadOwnerDropdown && matchesStages && matchesRegions && matchesLeadOwners && 
              matchesPriorities && matchesProbabilities && matchesHandoffStatuses && matchesProbabilityRange;
     })
     .sort((a, b) => {
@@ -336,7 +341,7 @@ export const ListView = ({
   // Reset to first page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [filters, searchTerm]);
+  }, [filters, searchTerm, leadOwnerFilter]);
 
   const getActiveFiltersCount = () => {
     let count = 0;
@@ -391,6 +396,20 @@ export const ListView = ({
                 inputSize="control"
               />
             </div>
+            
+            <Select value={leadOwnerFilter} onValueChange={setLeadOwnerFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="All Lead Owners" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Lead Owners</SelectItem>
+                {availableOptions.leadOwners.map((owner) => (
+                  <SelectItem key={owner} value={owner}>
+                    {owner}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             
             <DealsAdvancedFilter 
               filters={filters} 
