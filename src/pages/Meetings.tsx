@@ -64,6 +64,18 @@ const Meetings = () => {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [viewMode, setViewMode] = useState<'table' | 'calendar'>('table');
 
+  // Get owner parameter from URL - "me" means filter by current user
+  const ownerParam = searchParams.get('owner');
+
+  // Sync owner filter when URL has owner=me
+  useEffect(() => {
+    if (ownerParam === 'me' && user?.id) {
+      setOrganizerFilter(user.id);
+    } else if (!ownerParam) {
+      setOrganizerFilter('all');
+    }
+  }, [ownerParam, user?.id]);
+
   // Sync statusFilter when URL changes
   useEffect(() => {
     const urlStatus = searchParams.get('status');
@@ -359,11 +371,11 @@ const Meetings = () => {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 min-h-0 overflow-auto p-6">
+      <div className="flex-1 min-h-0 overflow-auto px-4 pt-2 pb-4">
         {viewMode === 'calendar' ? <MeetingsCalendarView meetings={filteredMeetings} onMeetingClick={meeting => {
         setEditingMeeting(meeting);
         setShowModal(true);
-      }} onMeetingUpdated={fetchMeetings} /> : <div className="space-y-4">
+      }} onMeetingUpdated={fetchMeetings} /> : <div className="space-y-3">
             {/* Search and Bulk Actions */}
             <div className="flex items-center gap-4">
               <div className="relative w-64">

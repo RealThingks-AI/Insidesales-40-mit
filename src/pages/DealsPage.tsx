@@ -29,6 +29,7 @@ const DealsPage = () => {
     logBulkDelete
   } = useCRUDAudit();
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [filteredDeals, setFilteredDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -36,6 +37,9 @@ const DealsPage = () => {
   const [initialStage, setInitialStage] = useState<DealStage>('Lead');
   const [activeView, setActiveView] = useState<'kanban' | 'list'>('list');
   const [stageFilterFromUrl, setStageFilterFromUrl] = useState(initialStageFilter);
+  
+  // Get owner parameter from URL - "me" means filter by current user
+  const ownerParam = searchParams.get('owner');
 
   // Sync stage filter when URL changes
   useEffect(() => {
@@ -44,6 +48,15 @@ const DealsPage = () => {
       setStageFilterFromUrl(urlStage);
     }
   }, [searchParams]);
+
+  // Filter deals by owner when owner=me
+  useEffect(() => {
+    if (ownerParam === 'me' && user?.id) {
+      setFilteredDeals(deals.filter(deal => deal.created_by === user.id));
+    } else {
+      setFilteredDeals(deals);
+    }
+  }, [deals, ownerParam, user?.id]);
   const fetchDeals = async () => {
     try {
       setLoading(true);
@@ -347,7 +360,7 @@ const DealsPage = () => {
 
       {/* Main Content Area - Takes remaining height */}
       <div className="flex-1 min-h-0 overflow-hidden">
-        {activeView === 'kanban' ? <KanbanBoard deals={deals} onUpdateDeal={handleUpdateDeal} onDealClick={handleDealClick} onCreateDeal={handleCreateDeal} onDeleteDeals={handleDeleteDeals} onImportDeals={handleImportDeals} onRefresh={fetchDeals} /> : <ListView deals={deals} onDealClick={handleDealClick} onUpdateDeal={handleUpdateDeal} onDeleteDeals={handleDeleteDeals} onImportDeals={handleImportDeals} initialStageFilter={stageFilterFromUrl} />}
+        {activeView === 'kanban' ? <KanbanBoard deals={filteredDeals} onUpdateDeal={handleUpdateDeal} onDealClick={handleDealClick} onCreateDeal={handleCreateDeal} onDeleteDeals={handleDeleteDeals} onImportDeals={handleImportDeals} onRefresh={fetchDeals} /> : <ListView deals={filteredDeals} onDealClick={handleDealClick} onUpdateDeal={handleUpdateDeal} onDeleteDeals={handleDeleteDeals} onImportDeals={handleImportDeals} initialStageFilter={stageFilterFromUrl} />}
       </div>
 
       {/* Deal Form Modal */}

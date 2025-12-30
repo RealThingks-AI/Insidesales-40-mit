@@ -1,11 +1,10 @@
-import LeadTable from "@/components/LeadTable";
+import LeadTable, { LeadTableRef } from "@/components/LeadTable";
 import { Button } from "@/components/ui/button";
-import { Settings, Plus, Trash2, MoreVertical, Upload, Download, Mail } from "lucide-react";
+import { Settings, Plus, Trash2, Upload, Download, Mail } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useSimpleLeadsImportExport } from "@/hooks/useSimpleLeadsImportExport";
-import { useLeadDeletion } from "@/hooks/useLeadDeletion";
 import { LeadDeleteConfirmDialog } from "@/components/LeadDeleteConfirmDialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { BulkEmailModal, BulkEmailRecipient } from "@/components/BulkEmailModal";
@@ -14,7 +13,7 @@ import { useSearchParams } from "react-router-dom";
 
 const Leads = () => {
   const [searchParams] = useSearchParams();
-  const initialStatus = searchParams.get('status') || 'New';
+  const initialStatus = searchParams.get('status') || 'all';
   const { toast } = useToast();
   const [showColumnCustomizer, setShowColumnCustomizer] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -23,21 +22,22 @@ const Leads = () => {
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const [showBulkEmailModal, setShowBulkEmailModal] = useState(false);
   const [bulkEmailRecipients, setBulkEmailRecipients] = useState<BulkEmailRecipient[]>([]);
+  const [isDeleting, setIsDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const leadTableRef = useRef<LeadTableRef>(null);
   
   const { handleImport, handleExport, isImporting } = useSimpleLeadsImportExport(() => {
     setRefreshTrigger(prev => prev + 1);
   });
-  
-  const { deleteLeads, isDeleting } = useLeadDeletion();
 
   const handleBulkDelete = async (deleteLinkedRecords: boolean = true) => {
     if (selectedLeads.length === 0) return;
-    const result = await deleteLeads(selectedLeads, deleteLinkedRecords);
-    if (result.success) {
-      setSelectedLeads([]);
-      setRefreshTrigger(prev => prev + 1);
+    setIsDeleting(true);
+    try {
+      await leadTableRef.current?.handleBulkDelete(deleteLinkedRecords);
       setShowBulkDeleteDialog(false);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -89,6 +89,11 @@ const Leads = () => {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  };
+
+  const handleBulkDeleteComplete = () => {
+    setSelectedLeads([]);
+    setRefreshTrigger(prev => prev + 1);
   };
 
   return (
@@ -178,8 +183,9 @@ const Leads = () => {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 min-h-0 overflow-auto p-6">
+      <div className="flex-1 min-h-0 overflow-auto px-4 pt-2 pb-4">
         <LeadTable 
+          ref={leadTableRef}
           showColumnCustomizer={showColumnCustomizer} 
           setShowColumnCustomizer={setShowColumnCustomizer} 
           showModal={showModal} 
@@ -188,6 +194,7 @@ const Leads = () => {
           setSelectedLeads={setSelectedLeads} 
           key={`${refreshTrigger}-${initialStatus}`}
           initialStatus={initialStatus}
+          onBulkDeleteComplete={handleBulkDeleteComplete}
         />
       </div>
 

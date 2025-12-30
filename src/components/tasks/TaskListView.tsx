@@ -32,9 +32,11 @@ import {
   Calendar,
   FileText,
   AlertCircle,
+  Eye,
 } from 'lucide-react';
 import { useUserDisplayNames } from '@/hooks/useUserDisplayNames';
 import { DeleteConfirmDialog } from '@/components/shared/DeleteConfirmDialog';
+import { TaskDetailModal } from './TaskDetailModal';
 
 interface TaskListViewProps {
   tasks: Task[];
@@ -43,6 +45,7 @@ interface TaskListViewProps {
   onStatusChange: (taskId: string, status: TaskStatus) => void;
   onToggleComplete: (task: Task) => void;
   initialStatusFilter?: string;
+  initialOwnerFilter?: string;
 }
 
 const priorityColors = {
@@ -73,18 +76,25 @@ export const TaskListView = ({
   onStatusChange,
   onToggleComplete,
   initialStatusFilter = 'all',
+  initialOwnerFilter = 'all',
 }: TaskListViewProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>(initialStatusFilter);
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
-  const [assignedToFilter, setAssignedToFilter] = useState<string>('all');
+  const [assignedToFilter, setAssignedToFilter] = useState<string>(initialOwnerFilter);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
+  const [viewingTask, setViewingTask] = useState<Task | null>(null);
 
   // Sync statusFilter when initialStatusFilter prop changes (from URL)
   useEffect(() => {
     setStatusFilter(initialStatusFilter);
   }, [initialStatusFilter]);
+
+  // Sync assignedToFilter when initialOwnerFilter prop changes (from URL)
+  useEffect(() => {
+    setAssignedToFilter(initialOwnerFilter);
+  }, [initialOwnerFilter]);
 
   const assignedToIds = [...new Set(tasks.map(t => t.assigned_to).filter(Boolean))] as string[];
   const createdByIds = [...new Set(tasks.map(t => t.created_by).filter(Boolean))] as string[];
@@ -148,7 +158,7 @@ export const TaskListView = ({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Filters */}
       <div className="flex flex-wrap gap-4 items-center">
         <div className="relative w-64">
@@ -312,6 +322,15 @@ export const TaskListView = ({
                           variant="ghost"
                           size="sm"
                           className="h-8 w-8 p-0"
+                          onClick={() => setViewingTask(task)}
+                          aria-label="View task"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0"
                           onClick={() => onEdit(task)}
                           aria-label="Edit task"
                         >
@@ -342,6 +361,16 @@ export const TaskListView = ({
         onConfirm={handleConfirmDelete}
         itemName={taskToDelete?.title}
         itemType="task"
+      />
+
+      <TaskDetailModal
+        open={!!viewingTask}
+        onOpenChange={(open) => !open && setViewingTask(null)}
+        task={viewingTask}
+        onEdit={(task) => {
+          setViewingTask(null);
+          onEdit(task);
+        }}
       />
     </div>
   );

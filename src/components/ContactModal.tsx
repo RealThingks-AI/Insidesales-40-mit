@@ -61,11 +61,14 @@ interface ContactModalProps {
 }
 
 const contactSources = [
-  "LinkedIn",
   "Website",
-  "Referral", 
-  "Social Media",
+  "Referral",
+  "LinkedIn",
+  "Cold Call",
+  "Trade Show",
   "Email Campaign",
+  "Social Media",
+  "Partner",
   "Other"
 ];
 

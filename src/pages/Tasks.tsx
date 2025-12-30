@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTasks } from '@/hooks/useTasks';
+import { useAuth } from '@/hooks/useAuth';
 import { Task, TaskStatus } from '@/types/task';
 import { TaskModal } from '@/components/tasks/TaskModal';
 import { TaskListView } from '@/components/tasks/TaskListView';
@@ -13,6 +14,7 @@ import { Plus, Loader2, List, LayoutGrid, CalendarDays, Trash2 } from 'lucide-re
 const Tasks = () => {
   const [searchParams] = useSearchParams();
   const initialStatus = searchParams.get('status') || 'all';
+  const { user } = useAuth();
   const {
     tasks,
     loading,
@@ -26,6 +28,19 @@ const Tasks = () => {
   const [viewMode, setViewMode] = useState<'list' | 'kanban' | 'calendar'>('list');
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
   const [initialStatusFilter, setInitialStatusFilter] = useState(initialStatus);
+  const [initialOwnerFilter, setInitialOwnerFilter] = useState('all');
+
+  // Get owner parameter from URL - "me" means filter by current user
+  const ownerParam = searchParams.get('owner');
+
+  // Sync owner filter when URL has owner=me
+  useEffect(() => {
+    if (ownerParam === 'me' && user?.id) {
+      setInitialOwnerFilter(user.id);
+    } else if (!ownerParam) {
+      setInitialOwnerFilter('all');
+    }
+  }, [ownerParam, user?.id]);
 
   // Sync status filter when URL changes
   useEffect(() => {
@@ -131,8 +146,8 @@ const Tasks = () => {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 min-h-0 overflow-auto p-6">
-        {viewMode === 'list' && <TaskListView tasks={tasks} onEdit={handleEdit} onDelete={handleDelete} onStatusChange={handleStatusChange} onToggleComplete={handleToggleComplete} initialStatusFilter={initialStatusFilter} />}
+      <div className="flex-1 min-h-0 overflow-auto px-4 pt-2 pb-4">
+        {viewMode === 'list' && <TaskListView tasks={tasks} onEdit={handleEdit} onDelete={handleDelete} onStatusChange={handleStatusChange} onToggleComplete={handleToggleComplete} initialStatusFilter={initialStatusFilter} initialOwnerFilter={initialOwnerFilter} />}
         {viewMode === 'kanban' && <TaskKanbanView tasks={tasks} onEdit={handleEdit} onDelete={handleDelete} onStatusChange={handleStatusChange} />}
         {viewMode === 'calendar' && <TaskCalendarView tasks={tasks} onEdit={handleEdit} />}
       </div>
