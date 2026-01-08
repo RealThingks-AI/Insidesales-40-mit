@@ -107,16 +107,8 @@ const Notifications = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading notifications...</p>
-        </div>
-      </div>
-    );
-  }
+  // Show skeleton instead of blocking full-screen loader
+  const showSkeleton = loading && notifications.length === 0;
 
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
@@ -126,7 +118,7 @@ const Notifications = () => {
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-3">
               <Bell className="h-6 w-6 text-primary" />
-              <h1 className="text-2xl font-bold text-foreground">Notifications</h1>
+              <h1 className="text-xl font-semibold text-foreground">Notifications</h1>
               {unreadCount > 0 && (
                 <Badge variant="destructive" className="rounded-full">
                   {unreadCount} unread
@@ -154,7 +146,13 @@ const Notifications = () => {
 
       {/* Notifications List */}
       <div className="flex-1 min-h-0 overflow-hidden">
-        {notifications.length === 0 ? (
+        {showSkeleton ? (
+          <div className="space-y-4 p-6">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-20 bg-muted animate-pulse rounded" />
+            ))}
+          </div>
+        ) : notifications.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center text-muted-foreground">
               <Bell className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" />
@@ -170,7 +168,7 @@ const Notifications = () => {
                   key={notification.id}
                   className={cn(
                     "p-6 hover:bg-muted/50 cursor-pointer transition-colors relative group",
-                    notification.status === 'unread' && "bg-blue-50/50 border-l-4 border-l-blue-500"
+                    notification.status === 'unread' && "bg-primary/5 border-l-4 border-l-primary"
                   )}
                   onClick={() => handleNotificationClick(notification)}
                 >
@@ -192,7 +190,7 @@ const Notifications = () => {
                               {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
                             </p>
                             {notification.status === 'unread' && (
-                              <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700">
+                              <Badge variant="secondary" className="text-xs bg-primary/10 text-primary">
                                 New
                               </Badge>
                             )}
