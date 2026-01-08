@@ -31,6 +31,7 @@ import { TableSkeleton } from "./shared/Skeletons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { moveFieldToEnd } from "@/utils/columnOrderUtils";
 import { formatDateTimeStandard } from "@/utils/formatUtils";
+import { getLeadStatusColor } from "@/utils/statusBadgeUtils";
 
 // Export ref interface for parent component
 export interface LeadTableRef {
@@ -515,33 +516,14 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
       .join('');
   };
 
-  // Generate consistent color from name
+  // Generate consistent vibrant color from name (matching Accounts pattern)
   const getAvatarColor = (name: string) => {
     const colors = [
-      'bg-slate-500', 'bg-slate-600', 'bg-zinc-500', 'bg-gray-500',
-      'bg-stone-500', 'bg-neutral-500', 'bg-slate-700', 'bg-zinc-600'
+      'bg-blue-600', 'bg-emerald-600', 'bg-purple-600', 'bg-amber-600', 
+      'bg-rose-600', 'bg-cyan-600', 'bg-indigo-600', 'bg-teal-600'
     ];
     const index = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
     return colors[index];
-  };
-
-  const getStatusBadgeClasses = (status?: string) => {
-    switch (status) {
-      case 'New':
-        return 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300 border-blue-200 dark:border-blue-800';
-      case 'Attempted':
-        return 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300 border-amber-200 dark:border-amber-800';
-      case 'Follow-up':
-        return 'bg-slate-100 text-slate-700 dark:bg-slate-800/30 dark:text-slate-300 border-slate-200 dark:border-slate-700';
-      case 'Qualified':
-        return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800';
-      case 'Disqualified':
-        return 'bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300 border-rose-200 dark:border-rose-800';
-      case 'Converted':
-        return 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800';
-      default:
-        return 'bg-muted text-muted-foreground border-border';
-    }
   };
 
   return (
@@ -701,7 +683,7 @@ const LeadTable = forwardRef<LeadTableRef, LeadTableProps>(({
                             )
                           ) : column.field === 'lead_status' ? (
                             lead.lead_status ? (
-                              <Badge variant="outline" className={getStatusBadgeClasses(lead.lead_status)}>
+                              <Badge variant="outline" className={getLeadStatusColor(lead.lead_status)}>
                                 {lead.lead_status}
                               </Badge>
                             ) : (

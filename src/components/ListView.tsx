@@ -26,6 +26,7 @@ import { ClearFiltersButton } from "./shared/ClearFiltersButton";
 import { HighlightedText } from "./shared/HighlightedText";
 import { useUserDisplayNames } from "@/hooks/useUserDisplayNames";
 import { moveFieldToEnd } from "@/utils/columnOrderUtils";
+import { getDealStageColor } from "@/utils/statusBadgeUtils";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
@@ -163,27 +164,8 @@ export const ListView = ({
     return formatDateTimeStandard(date) || '-';
   };
 
-  // Stage badge styling (matching Accounts module)
-  const getStageBadgeClasses = (stage?: string) => {
-    switch (stage) {
-      case 'Won':
-        return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300 border-emerald-200';
-      case 'Dropped':
-        return 'bg-gray-100 text-gray-600 dark:bg-gray-800/30 dark:text-gray-400 border-gray-200';
-      case 'Lead':
-        return 'bg-slate-100 text-slate-700 dark:bg-slate-800/30 dark:text-slate-300 border-slate-200';
-      case 'Qualified':
-        return 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300 border-blue-200';
-      case 'Discussions':
-        return 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300 border-amber-200';
-      case 'Offered':
-        return 'bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300 border-purple-200';
-      case 'RFQ':
-        return 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300 border-indigo-200';
-      default:
-        return 'bg-muted text-muted-foreground border-border';
-    }
-  };
+  // Use shared stage badge styling from utilities
+  const getStageBadgeClasses = (stage?: string) => getDealStageColor(stage);
 
   // Generate initials from project name
   const getProjectInitials = (name: string) => {
