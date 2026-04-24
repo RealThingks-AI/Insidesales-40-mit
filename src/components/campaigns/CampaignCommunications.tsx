@@ -25,6 +25,8 @@ import { stageRanks } from "./campaignUtils";
 import { parseEmailBody } from "./emailBody";
 import { SyncStatusPill } from "./SyncStatusPill";
 import { isReachableEmail, isReachableLinkedIn, isReachablePhone, normalizeChannel, channelLabel, formatPhoneForDisplay } from "@/lib/email";
+import { areSubjectsCompatible } from "@/utils/subjectNormalize";
+import { Link } from "react-router-dom";
 
 interface Props {
   campaignId: string;
@@ -342,15 +344,25 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, viewMode, 
 
     // Email conversation threads — drop inbound rows whose sender email does
     // NOT match the bucket's contact email (orphan replies). These are
-    // surfaced separately at the bottom of the Email tab.
+    // surfaced separately at the bottom of the Email tab. Also drop inbound
+    // rows whose normalized subject is incompatible with the parent thread
+    // (defense-in-depth UI mirror of the edge-function guard).
     Object.entries(emailThreads).forEach(([compositeKey, msgs]) => {
       const sample = msgs[0];
       const contactEmail = (sample?.contacts?.email || "").trim().toLowerCase();
+      // Parent subject = first outbound (or first message) in the bucket.
+      const parentForSubject =
+        msgs.find((m) => (m.sent_via || "manual") !== "graph-sync") || msgs[0];
+      const parentSubject = parentForSubject?.subject || "";
       const cleanedMsgs: any[] = [];
       for (const m of msgs) {
         if (m.sent_via === "graph-sync" && contactEmail) {
           const senderEmail = extractSenderEmailFromNotes(m.notes);
           if (senderEmail && senderEmail !== contactEmail) {
+            orphans.push(m);
+            continue;
+          }
+          if (parentSubject && m.subject && !areSubjectsCompatible(parentSubject, m.subject)) {
             orphans.push(m);
             continue;
           }
