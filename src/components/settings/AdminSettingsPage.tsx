@@ -29,6 +29,7 @@ interface AdminSettingsPageProps {
 
 const AdminSettingsPage = ({ defaultSection }: AdminSettingsPageProps) => {
   const { userRole, loading: roleLoading } = useUserRole();
+  const navigate = useNavigate();
 
   const getTabFromSection = (section: string | null) => {
     if (!section) return 'users';
