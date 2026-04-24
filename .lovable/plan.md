@@ -1,104 +1,152 @@
-# Fix Unresponsive Form Fields in Modal Dialogs
 
-## Problem Analysis
 
-The user reported that when creating a task in the Account section, the form fields (particularly Select dropdowns, Calendar popovers, and other interactive elements) are not responsive/clickable.
+# Lock down cross-thread email leaks + observability + manual controls
 
-### Root Cause
+Comprehensive hardening of reply attribution with full audit trail, monitoring dashboard, manual re-sync, and PDF reporting.
 
-The issue is a **z-index stacking context conflict** between the Dialog component and its child components (Select, Popover, Calendar):
+## 1) Stronger subject normalization (shared helper)
 
-1. **Dialog** uses `z-50` for both the overlay and content
-2. **Select/Popover/Calendar** dropdowns also use `z-50`
-3. When a Select dropdown opens inside a Dialog, it renders in a portal at the same z-level as the Dialog, causing:
-   - Dropdowns appearing behind the dialog overlay
-   - Click events being intercepted by the overlay
-   - Fields appearing unresponsive
+Create `supabase/functions/_shared/subject-normalize.ts` as the single source of truth:
 
-### Affected Components
+- Strip stacked reply/forward prefixes recursively, including localized variants:
+  - English: `Re`, `Fw`, `Fwd`
+  - German: `AW`, `WG`, `Antwort`, `Weitergeleitet`
+  - French: `Rép`, `Tr`
+  - Spanish: `RV`, `RES`
+  - Italian: `R`, `I`
+  - Dutch: `Antw`, `Doorst`
+- Strip bracket tags: `[EXT]`, `[External]`, `[SPAM]`, `[#1234]`
+- Unicode NFKC normalize, remove zero-width chars, collapse whitespace, lowercase, trim trailing punctuation
+- Export `areSubjectsCompatible(a, b)` using token Jaccard ≥ 0.6 OR substring containment ≥ 8 chars
+- Mirror in `src/utils/subjectNormalize.ts` for UI guard parity
 
-Based on analysis, these modal components use Select/Popover inside Dialogs and may have the same issue:
+Apply in:
+- `check-email-replies/index.ts` (replaces inline normalizer)
+- `_shared/azure-email.ts`
+- `CampaignCommunications.tsx` UI guard
 
-1. `src/components/tasks/TaskModal.tsx` - Task creation (primary issue reported)
-2. `src/components/AccountModal.tsx` - Account creation/editing
-3. `src/components/ContactModal.tsx` - Contact creation/editing
-4. `src/components/LeadModal.tsx` - Lead creation/editing
-5. `src/components/MeetingModal.tsx` - Meeting creation/editing
-6. `src/components/DealForm.tsx` - Deal form fields
-7. Various detail modals with editable fields
+Tests in `supabase/functions/check-email-replies/subject_compat_test.ts`:
+- Lukas case must return `false`
+- `Re: Re: Fw: Hello` vs `Hello` → `true`
+- `AW: Angebot` vs `Angebot` → `true`
+- `[EXT] Re: Proposal` vs `Proposal` → `true`
+- Typo tolerance + null/empty safety
 
-## Solution
+## 2) Persist every skipped reply
 
-### Approach: Increase z-index for dropdown portals inside dialogs
+New table `email_reply_skip_log`:
 
-The fix involves updating the UI components to use higher z-index values when rendering inside dialogs. We have two options:
+```text
+id                       uuid pk
+created_at               timestamptz default now()
+campaign_id              uuid null
+contact_id               uuid null
+contact_email            text
+sender_email             text
+subject                  text
+conversation_id          text
+received_at              timestamptz
+parent_communication_id  uuid null
+parent_subject           text
+parent_sent_at           timestamptz
+skip_reason              text   -- chronology | subject_mismatch | contact_mismatch | ambiguous_candidates | no_eligible_parent
+details                  jsonb
+correlation_id           uuid null
+```
 
-**Option A (Recommended): Update base UI components**
-- Update `SelectContent` to use `z-[100]` instead of `z-50`
-- Update `PopoverContent` to use `z-[100]` instead of `z-50`
-- This fixes the issue globally for all modals
+RLS: admins + campaign owners can SELECT; only service role can INSERT. Indexes on `(campaign_id, created_at)`, `(contact_id, created_at)`, `(skip_reason)`, `(correlation_id)`.
 
-**Option B: Add `pointer-events-auto` and higher z-index per usage**
-- Add `className="z-[100] pointer-events-auto"` to each SelectContent/PopoverContent inside dialogs
-- More targeted but requires changes in many files
+`check-email-replies` writes a structured row per skip instead of `console.log`.
 
-## Implementation Steps
+## 3) Audit page
 
-### Step 1: Update Select Component (src/components/ui/select.tsx)
-- Change `SelectContent` z-index from `z-50` to `z-[100]`
-- Line 76: Update the className from `relative z-50` to `relative z-[100]`
+New route `/settings/email-skip-audit` (admin-gated, linked from `AdminSettingsPage` Logs tab):
 
-### Step 2: Update Popover Component (src/components/ui/popover.tsx)
-- Change `PopoverContent` z-index from `z-50` to `z-[100]`
-- Line 20: Update the className from `z-50` to `z-[100]`
+- `src/pages/EmailSkipAuditLog.tsx` + `src/components/settings/EmailSkipAuditTable.tsx`
+- Filters: date range, campaign, contact, reason
+- Columns: When, Campaign, Contact, Sender email, Subject, Reason badge, Parent subject, Parent sent at
+- Row click → side drawer with full `details` JSON and considered candidates
+- `StandardPagination` + CSV export + PDF download button
 
-### Step 3: Update Tooltip Component (src/components/ui/tooltip.tsx)
-- Verify and update TooltipContent z-index if needed (should be `z-[100]`)
-- This ensures tooltips also appear above dialogs
+## 4) Reply Health dashboard on campaign page
 
-### Step 4: Verify Calendar interactions
-- The Calendar component already has `pointer-events-auto` class in TaskModal.tsx (line 641)
-- Verify this pattern is applied in all modal calendar usages
+New tab on `/campaigns/:slug` rendered by `src/components/campaigns/ReplyHealthDashboard.tsx`:
 
-## Testing Checklist
+- KPI cards: Valid replies (30d), Skipped replies (30d), Skip rate %, Active guards triggered
+- Line chart (recharts): valid vs skipped per day, last 30 days
+- Stacked bar: top skip reasons
+- Table: top offending senders/conversations
+- Date-range picker (7d / 30d / 90d / custom)
 
-After implementation, test these scenarios across ALL modules:
+Sources:
+- valid: `campaign_communications` where `sent_via='graph-sync'` and `campaign_id=:id`
+- skipped: `email_reply_skip_log` where `campaign_id=:id`
 
-- [ ] Task Modal (Accounts section):
-  - [ ] Module selector dropdown works
-  - [ ] Account selector dropdown works
-  - [ ] Assigned To dropdown works
-  - [ ] Due Date calendar picker works
-  - [ ] Time selector works
-  - [ ] Priority dropdown works
-  - [ ] Status dropdown works
+## 5) Manual re-run sync
 
-- [ ] Account Modal:
-  - [ ] Region/Country dropdowns work
-  - [ ] Status dropdown works
-  - [ ] Industry dropdown works
+`check-email-replies/index.ts` accepts POST body:
 
-- [ ] Contact Modal:
-  - [ ] Account selector dropdown works
-  - [ ] Contact Source dropdown works
+```json
+{ "campaign_id": "...", "contact_id": "optional" }
+```
 
-- [ ] Lead Modal:
-  - [ ] Account selector dropdown works
-  - [ ] Status/Source dropdowns work
+- Scope Graph search and DB queries to that scope
+- Stamp every new row (skip log + outbound) with a generated `correlation_id`
+- Return `{ correlation_id, scanned, inserted, skipped: { chronology, subject_mismatch, contact_mismatch, ambiguous, no_parent }, durationMs }`
 
-- [ ] Meeting Modal:
-  - [ ] Date/Time pickers work
-  - [ ] Timezone selector works
-  - [ ] Contact/Lead selectors work
+UI in `CampaignCommunications.tsx`:
+- New **Re-sync replies** button next to existing Refresh
+- Scoped to selected thread's contact when one is open, else whole campaign
+- Result dialog shows per-reason counts + "View skipped" link deep-linking to audit page filtered by `correlation_id`
 
-- [ ] Deal Form:
-  - [ ] All stage-related dropdowns work
-  - [ ] Date pickers work
+## 6) PDF report
 
-## Critical Files for Implementation
+New edge function `supabase/functions/email-skip-report/index.ts`:
 
-- `src/components/ui/select.tsx` - Core Select component z-index fix
-- `src/components/ui/popover.tsx` - Core Popover component z-index fix  
-- `src/components/ui/tooltip.tsx` - Tooltip z-index verification
-- `src/components/tasks/TaskModal.tsx` - Primary affected component to test
-- `src/components/ui/dialog.tsx` - Reference for understanding the z-index structure
+- Input: `{ campaign_id?, from, to }`
+- Pulls from `email_reply_skip_log`
+- Generates PDF via `pdf-lib` (Deno-compatible)
+- Sections: cover (range, totals, reason breakdown), per-day breakdown table, per-row detail table
+- Returns `application/pdf` stream
+
+UI: **Download PDF report** button on both audit page and Reply Health dashboard with date-range picker.
+
+## Files
+
+**Edge functions**
+- `supabase/functions/_shared/subject-normalize.ts` (new)
+- `supabase/functions/check-email-replies/index.ts` (use helper, scoped re-run, skip log, summary)
+- `supabase/functions/check-email-replies/subject_compat_test.ts` (new)
+- `supabase/functions/email-skip-report/index.ts` (new)
+- `supabase/config.toml` (register `email-skip-report`)
+
+**Database migration**
+- `email_reply_skip_log` table + RLS + indexes
+
+**Frontend**
+- `src/utils/subjectNormalize.ts` (new)
+- `src/components/campaigns/CampaignCommunications.tsx` (normalizer + Re-sync button + result dialog)
+- `src/components/campaigns/ReplyHealthDashboard.tsx` (new)
+- `src/pages/CampaignDetail.tsx` (mount Reply Health tab)
+- `src/pages/EmailSkipAuditLog.tsx` (new)
+- `src/components/settings/EmailSkipAuditTable.tsx` (new)
+- `src/components/settings/AdminSettingsPage.tsx` (link to audit page)
+- `src/App.tsx` (register `/settings/email-skip-audit`)
+
+## Verification
+
+- Unit tests pass for Lukas pair and localized prefixes
+- Re-sync on Campaign 2 → Lukas returns `inserted: 0, skipped: { subject_mismatch: 1 }` and writes audit row
+- Audit page lists the row with reason `subject_mismatch`
+- Reply Health dashboard shows 1 skip in chosen window
+- PDF for that range contains the row with timestamps and blocking guard
+- No new graph-sync row created for replies whose normalized subject doesn't match parent
+
+## Technical notes
+
+- `correlation_id` ties manual re-runs to their resulting skip log entries for traceability
+- Subject normalizer lives in `_shared/` to guarantee server/client parity; UI mirror imports the same logic shape
+- Skip log uses service-role-only inserts to prevent client tampering; RLS lets admins and campaign owners read
+- Reply Health charts reuse existing `recharts` dependency; no new packages
+- PDF generation uses `pdf-lib` from npm (Deno supports via `npm:` specifier)
+

@@ -21,6 +21,9 @@ import { formatDistanceToNow } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useEffect } from 'react';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 
 const Notifications = () => {
   const { 
@@ -37,17 +40,16 @@ const Notifications = () => {
     setCurrentPage
   } = useNotifications();
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const { user } = useAuth();
 
-  // Calculate total pages
   const totalPages = Math.ceil(totalNotifications / itemsPerPage);
 
-  // Handle page change
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
     fetchNotifications(page);
   };
 
-  // Fetch initial data
   useEffect(() => {
     fetchNotifications(1);
   }, []);
@@ -57,32 +59,29 @@ const Notifications = () => {
       await markAsRead(notification.id);
     }
 
-    const message = notification.message.toLowerCase();
-    const dealMatch = message.match(/deal[:\s]+([a-f0-9-]{36})/);
-    const leadMatch = message.match(/lead[:\s]+([a-f0-9-]{36})/);
-    
-    if (notification.lead_id) {
-      navigate(`/leads?highlight=${notification.lead_id}`);
-    } else if (dealMatch) {
-      const dealId = dealMatch[1];
-      navigate(`/deals?highlight=${dealId}`);
-    } else if (leadMatch) {
-      const leadId = leadMatch[1];
-      navigate(`/leads?highlight=${leadId}`);
+    // If we have an action_item_id, navigate to action items page with highlight
+    if (notification.action_item_id) {
+      navigate(`/action-items?highlight=${notification.action_item_id}`);
+      return;
+    }
+
+    // Fallback navigation based on module_type
+    if (notification.module_type === 'deals' && notification.module_id) {
+      navigate(`/deals?highlight=${notification.module_id}`);
+    } else if (notification.module_type === 'leads' && notification.module_id) {
+      navigate(`/deals?highlight=${notification.module_id}`);
+    } else if (notification.module_type === 'contacts' && notification.module_id) {
+      navigate(`/contacts?highlight=${notification.module_id}`);
+    } else if (notification.lead_id) {
+      navigate(`/deals?highlight=${notification.lead_id}`);
     } else if (notification.notification_type === 'action_item') {
-      if (message.includes('deal')) {
-        navigate('/deals');
-      } else if (message.includes('lead') || message.includes('contact')) {
-        navigate('/leads');
-      } else {
-        navigate('/deals');
-      }
+      navigate('/action-items');
     } else if (notification.notification_type === 'deal_update') {
       navigate('/deals');
     } else if (notification.notification_type === 'lead_update') {
-      navigate('/leads');
+      navigate('/deals');
     } else {
-      navigate('/dashboard');
+      navigate('/action-items');
     }
   };
 
@@ -90,45 +89,101 @@ const Notifications = () => {
     await markAllAsRead();
   };
 
+  const handleClearAll = async () => {
+    if (!user) return;
+    
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .delete()
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "All notifications cleared"
+      });
+      fetchNotifications(1);
+    } catch (error) {
+      console.error('Error clearing notifications:', error);
+      toast({
+        title: "Error",
+        description: "Failed to clear notifications",
+        variant: "destructive"
+      });
+    }
+  };
+
   const handleDeleteNotification = async (notificationId: string) => {
     await deleteNotification(notificationId);
   };
 
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case 'action_item':
-        return '📋';
-      case 'lead_update':
-        return '👤';
-      case 'deal_update':
-        return '💼';
-      default:
-        return '🔔';
+  const getNotificationIcon = (notification: any) => {
+    const message = notification.message || '';
+    const type = notification.notification_type;
+    
+    // Check for emoji prefixes first (from trigger)
+    if (message.includes('🔴')) return '🔴';
+    if (message.includes('✅')) return '✅';
+    if (message.includes('🗑️')) return '🗑️';
+    if (message.includes('📊')) return '📊';
+    if (message.includes('🔄')) return '🔄';
+    
+    // Check by notification type first
+    if (type === 'deal_update') {
+      if (message.toLowerCase().includes('deleted')) return '🗑️';
+      if (message.toLowerCase().includes('stage')) return '📊';
+      return '💼';
     }
+    if (type === 'lead_update') {
+      if (message.toLowerCase().includes('deleted')) return '🗑️';
+      if (message.toLowerCase().includes('status')) return '🔄';
+      return '👤';
+    }
+    
+    // Action item notifications
+    if (message.toLowerCase().includes('completed')) return '✅';
+    if (message.toLowerCase().includes('deleted')) return '🗑️';
+    if (message.toLowerCase().includes('assigned to you')) return '📋';
+    if (message.toLowerCase().includes('reassigned')) return '🔄';
+    if (message.toLowerCase().includes('priority') || message.toLowerCase().includes('high')) return '🔴';
+    if (message.toLowerCase().includes('due date')) return '📅';
+    
+    // Fallback
+    return '🔔';
   };
 
-  // Show skeleton instead of blocking full-screen loader
-  const showSkeleton = loading && notifications.length === 0;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading notifications...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="h-screen flex flex-col bg-background overflow-hidden">
-      {/* Fixed Header */}
-      <div className="flex-shrink-0 bg-background">
-        <div className="px-6 h-16 flex items-center border-b w-full">
-          <div className="flex items-center justify-between w-full">
-            <div className="flex items-center gap-3">
-              <Bell className="h-6 w-6 text-primary" />
-              <h1 className="text-xl font-semibold text-foreground">Notifications</h1>
-              {unreadCount > 0 && (
-                <Badge variant="destructive" className="rounded-full">
-                  {unreadCount} unread
-                </Badge>
-              )}
-              <div className="text-sm text-muted-foreground">
-                Page {currentPage} of {totalPages} • {totalNotifications} total
-              </div>
-            </div>
-            
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Header - fixed height matching sidebar */}
+      <div className="flex-shrink-0 h-16 border-b bg-background px-6 flex items-center">
+        <div className="flex items-center justify-between w-full">
+          <div className="flex items-center gap-3">
+            <Bell className="h-5 w-5 text-primary" />
+            <h1 className="text-2xl font-semibold text-foreground">Notifications</h1>
+            {unreadCount > 0 && (
+              <Badge variant="destructive" className="rounded-full">
+                {unreadCount} unread
+              </Badge>
+            )}
+            <span className="text-sm text-muted-foreground">
+              Page {currentPage} of {totalPages} • {totalNotifications} total
+            </span>
+          </div>
+          
+          <div className="flex items-center gap-2">
             {unreadCount > 0 && (
               <Button
                 variant="outline"
@@ -137,22 +192,27 @@ const Notifications = () => {
                 className="flex items-center gap-2"
               >
                 <CheckCheck className="h-4 w-4" />
-                Mark all as read
+                Mark All Read
+              </Button>
+            )}
+            {notifications.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleClearAll}
+                className="flex items-center gap-2 text-destructive hover:text-destructive"
+              >
+                <Trash2 className="h-4 w-4" />
+                Clear All
               </Button>
             )}
           </div>
         </div>
       </div>
 
-      {/* Notifications List */}
-      <div className="flex-1 min-h-0 overflow-hidden">
-        {showSkeleton ? (
-          <div className="space-y-4 p-6">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-20 bg-muted animate-pulse rounded" />
-            ))}
-          </div>
-        ) : notifications.length === 0 ? (
+      {/* Content Area */}
+      <div className="flex-1 min-h-0 overflow-auto">
+        {notifications.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center text-muted-foreground">
               <Bell className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" />
@@ -161,94 +221,91 @@ const Notifications = () => {
             </div>
           </div>
         ) : (
-          <div className="h-full overflow-auto">
-            <div className="divide-y divide-border">
-              {notifications.map((notification) => (
-                <div
-                  key={notification.id}
-                  className={cn(
-                    "p-6 hover:bg-muted/50 cursor-pointer transition-colors relative group",
-                    notification.status === 'unread' && "bg-primary/5 border-l-4 border-l-primary"
-                  )}
-                  onClick={() => handleNotificationClick(notification)}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start gap-4">
-                        <span className="text-2xl mt-1 flex-shrink-0">
-                          {getNotificationIcon(notification.notification_type)}
-                        </span>
-                        <div className="flex-1">
-                          <p className={cn(
-                            "text-sm text-foreground leading-relaxed mb-3",
-                            notification.status === 'unread' && "font-semibold"
-                          )}>
-                            {notification.message}
+          <div className="divide-y divide-border">
+            {notifications.map((notification) => (
+              <div
+                key={notification.id}
+                className={cn(
+                  "px-6 py-4 hover:bg-muted/50 cursor-pointer transition-colors relative group",
+                  notification.status === 'unread' && "bg-blue-50/50 border-l-4 border-l-blue-500"
+                )}
+                onClick={() => handleNotificationClick(notification)}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start gap-4">
+                      <span className="text-2xl mt-1 flex-shrink-0">
+                        {getNotificationIcon(notification)}
+                      </span>
+                      <div className="flex-1">
+                        <p className={cn(
+                          "text-sm text-foreground leading-relaxed mb-3",
+                          notification.status === 'unread' && "font-semibold"
+                        )}>
+                          {notification.message}
+                        </p>
+                        <div className="flex items-center gap-3">
+                          <p className="text-xs text-muted-foreground">
+                            {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
                           </p>
-                          <div className="flex items-center gap-3">
-                            <p className="text-xs text-muted-foreground">
-                              {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
-                            </p>
-                            {notification.status === 'unread' && (
-                              <Badge variant="secondary" className="text-xs bg-primary/10 text-primary">
-                                New
-                              </Badge>
-                            )}
-                            <Badge variant="outline" className="text-xs capitalize">
-                              {notification.notification_type.replace('_', ' ')}
+                          {notification.status === 'unread' && (
+                            <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700">
+                              New
                             </Badge>
-                          </div>
+                          )}
+                          <Badge variant="outline" className="text-xs capitalize">
+                            {notification.notification_type.replace('_', ' ')}
+                          </Badge>
                         </div>
                       </div>
                     </div>
-                    
-                    {/* Action Dropdown */}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {notification.status === 'unread' && (
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              markAsRead(notification.id);
-                            }}
-                          >
-                            Mark as read
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuSeparator />
+                  </div>
+                  
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {notification.status === 'unread' && (
                         <DropdownMenuItem
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDeleteNotification(notification.id);
+                            markAsRead(notification.id);
                           }}
-                          className="text-destructive"
                         >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete
+                          Mark as read
                         </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
+                      )}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteNotification(notification.id);
+                        }}
+                        className="text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
 
-      {/* Pagination */}
+      {/* Pagination Footer */}
       {totalPages > 1 && (
-        <div className="p-6 border-t bg-background">
+        <div className="flex-shrink-0 border-t bg-background px-6 py-3">
           <Pagination>
             <PaginationContent>
               {currentPage > 1 && (

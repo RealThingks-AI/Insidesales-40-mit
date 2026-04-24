@@ -1,176 +1,130 @@
-// RT-CRM Application
+
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
-import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import SecurityEnhancedApp from "@/components/SecurityEnhancedApp";
 import { AppSidebar } from "@/components/AppSidebar";
-import PageAccessGuard from "@/components/PageAccessGuard";
-import { useState, lazy, Suspense, useEffect, useRef } from "react";
-import { Skeleton } from "@/components/ui/skeleton";
-import { supabase } from "@/integrations/supabase/client";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 
-// Lazy load all page components for code-splitting
-const Dashboard = lazy(() => import("./pages/Dashboard"));
+// Eager: most-common landing pages
+import Dashboard from "./pages/Dashboard";
+import Auth from "./pages/Auth";
+
+// Lazy: everything else (huge code-split win)
 const Accounts = lazy(() => import("./pages/Accounts"));
 const Contacts = lazy(() => import("./pages/Contacts"));
-const Leads = lazy(() => import("./pages/Leads"));
-const Meetings = lazy(() => import("./pages/Meetings"));
 const DealsPage = lazy(() => import("./pages/DealsPage"));
+const Campaigns = lazy(() => import("./pages/Campaigns"));
+const CampaignDetail = lazy(() => import("./pages/CampaignDetail"));
+const ActionItems = lazy(() => import("./pages/ActionItems"));
 const Settings = lazy(() => import("./pages/Settings"));
-const Auth = lazy(() => import("./pages/Auth"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const Notifications = lazy(() => import("./pages/Notifications"));
-const Tasks = lazy(() => import("./pages/Tasks"));
-const StickyHeaderTest = lazy(() => import("./pages/StickyHeaderTest"));
 
-// Build version for cache busting on deployments
-const CACHE_BUSTER = 'v1.0.0';
-
-// QueryClient with optimized defaults to reduce refetching
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5 * 60 * 1000, // 5 minutes - data stays fresh
-      gcTime: 24 * 60 * 60 * 1000, // 24 hours cache
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      gcTime: 10 * 60 * 1000, // 10 minutes
       refetchOnWindowFocus: false,
-      refetchOnMount: false,
       retry: 1,
     },
   },
 });
 
-// Create persister for localStorage caching across page refreshes
-const persister = createSyncStoragePersister({
-  storage: window.localStorage,
-  key: 'rt-crm-cache',
-});
-
-// Loading fallback for auth page (full screen)
-const PageLoader = () => (
-  <div className="min-h-screen flex items-center justify-center bg-background">
-    <div className="text-center">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-      <p className="text-muted-foreground">Loading...</p>
+const RouteFallback = () => (
+  <div className="min-h-screen flex items-center justify-center bg-background px-6">
+    <div className="flex flex-col items-center gap-3 text-center">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <p className="text-sm font-medium text-foreground">Loading page</p>
     </div>
   </div>
 );
 
-// Lightweight content loader - shows skeleton in content area only
-const ContentLoader = () => (
-  <div className="h-screen flex flex-col bg-background p-6">
-    <Skeleton className="h-8 w-48 mb-6" />
-    <div className="space-y-4 flex-1">
-      <Skeleton className="h-12 w-full" />
-      <Skeleton className="h-64 w-full" />
-      <Skeleton className="h-32 w-full" />
+const RouteDiagnostics = () => {
+  const location = useLocation();
+
+  useEffect(() => {
+    console.info("[route] location changed", {
+      pathname: location.pathname,
+      search: location.search,
+      hash: location.hash,
+    });
+  }, [location]);
+
+  return null;
+};
+
+const AppCrashedFallback = ({ onRetry }: { onRetry: () => void }) => {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background px-6">
+      <div className="w-full max-w-md rounded-lg border bg-card p-6 shadow-sm">
+        <div className="space-y-2 text-center">
+          <h1 className="text-xl font-semibold text-foreground">Something went wrong</h1>
+          <p className="text-sm text-muted-foreground">
+            The preview hit a runtime error on <span className="font-medium text-foreground">{location.pathname}</span>.
+          </p>
+        </div>
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-center">
+          <Button onClick={onRetry}>Retry preview</Button>
+          <Button variant="outline" onClick={() => navigate("/auth", { replace: true })}>Go to sign in</Button>
+        </div>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 // Layout Component for all pages with fixed sidebar
 const FixedSidebarLayout = ({ children }: { children: React.ReactNode }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false); // Start collapsed
+  const location = useLocation();
+  
+  // These routes need overflow-hidden so they can control their own scrolling
+  const controlledScrollRoutes = ['/action-items', '/contacts', '/deals', '/settings', '/notifications', '/', '/accounts', '/campaigns'];
+  const needsControlledScroll = controlledScrollRoutes.includes(location.pathname) || location.pathname.startsWith('/campaigns/');
   
   return (
-    <div className="min-h-screen flex w-full">
+    <div className="h-screen flex w-full overflow-hidden">
       <div className="fixed top-0 left-0 z-50 h-full">
         <AppSidebar isFixed={true} isOpen={sidebarOpen} onToggle={setSidebarOpen} />
       </div>
       <main 
-        className="flex-1 bg-background min-h-screen"
+        className="flex-1 bg-background h-screen overflow-hidden"
         style={{ 
-          marginLeft: sidebarOpen ? '12.5rem' : '4rem',
+          marginLeft: sidebarOpen ? '200px' : '64px',
           transition: 'margin-left 300ms ease-in-out',
-          width: `calc(100vw - ${sidebarOpen ? '12.5rem' : '4rem'})`
+          width: `calc(100vw - ${sidebarOpen ? '200px' : '64px'})`
         }}
       >
-        <div className="w-full h-full overflow-auto">
-          {children}
+        <div className={`w-full h-full min-h-0 ${needsControlledScroll ? 'overflow-hidden' : 'overflow-auto'}`}>
+          <Suspense fallback={<RouteFallback />}>
+            {children}
+          </Suspense>
         </div>
       </main>
     </div>
   );
 };
 
-// Hook to clear cache on logout and prefetch routes
-const useAppSetup = (isAuthenticated: boolean) => {
-  const hasPrefetched = useRef(false);
-  const prevUserId = useRef<string | null>(null);
-  
-  // Clear cache on logout
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') {
-        // Clear all cached data when user signs out
-        localStorage.removeItem('rt-crm-cache');
-        queryClient.clear();
-      }
-      
-      // Clear cache if user changed (different user logged in)
-      const newUserId = session?.user?.id || null;
-      if (prevUserId.current && newUserId && prevUserId.current !== newUserId) {
-        localStorage.removeItem('rt-crm-cache');
-        queryClient.clear();
-      }
-      prevUserId.current = newUserId;
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
-  
-  // Prefetch route chunks after authentication
-  useEffect(() => {
-    if (isAuthenticated && !hasPrefetched.current) {
-      hasPrefetched.current = true;
-      
-      // Prefetch route chunks in background after a short delay
-      const prefetch = () => {
-        // Use requestIdleCallback if available, otherwise setTimeout
-        const scheduleImport = (importFn: () => Promise<any>) => {
-          if ('requestIdleCallback' in window) {
-            (window as any).requestIdleCallback(() => importFn().catch(() => {}));
-          } else {
-            setTimeout(() => importFn().catch(() => {}), 100);
-          }
-        };
-        
-        // Prefetch main route chunks
-        scheduleImport(() => import("./pages/Accounts"));
-        scheduleImport(() => import("./pages/Contacts"));
-        scheduleImport(() => import("./pages/Leads"));
-        scheduleImport(() => import("./pages/Meetings"));
-        scheduleImport(() => import("./pages/DealsPage"));
-        scheduleImport(() => import("./pages/Tasks"));
-        scheduleImport(() => import("./pages/Settings"));
-        scheduleImport(() => import("./pages/Notifications"));
-      };
-      
-      // Start prefetching after initial render settles
-      setTimeout(prefetch, 1000);
-    }
-  }, [isAuthenticated]);
-};
-
-// Protected Route Component with Page Access Control
+// Protected Route Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
-  
-  // Setup app (cache clearing, route prefetch)
-  useAppSetup(!!user);
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
+        <div className="text-center px-6">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading...</p>
+          <p className="text-foreground font-medium">Restoring your workspace</p>
+          <p className="text-sm text-muted-foreground mt-1">Checking your session and loading the app shell.</p>
         </div>
       </div>
     );
@@ -180,15 +134,9 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     return <Navigate to="/auth" replace />;
   }
 
-  // Use FixedSidebarLayout for all protected routes with Page Access Guard
-  // Suspense is inside layout so sidebar stays visible while content loads
   return (
     <FixedSidebarLayout>
-      <PageAccessGuard>
-        <Suspense fallback={<ContentLoader />}>
-          {children}
-        </Suspense>
-      </PageAccessGuard>
+      {children}
     </FixedSidebarLayout>
   );
 };
@@ -200,9 +148,10 @@ const AuthRoute = ({ children }: { children: React.ReactNode }) => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
+        <div className="text-center px-6">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading...</p>
+          <p className="text-foreground font-medium">Preparing authentication</p>
+          <p className="text-sm text-muted-foreground mt-1">Please wait while we verify your session.</p>
         </div>
       </div>
     );
@@ -215,87 +164,37 @@ const AuthRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
-// App Router Component - Suspense moved inside ProtectedRoute for instant sidebar
+const RoutedApp = () => {
+  const location = useLocation();
+
+  return (
+    <AppErrorBoundary resetKeys={[location.pathname]} fallback={(reset) => <AppCrashedFallback onRetry={reset} />}>
+      <RouteDiagnostics />
+      <Routes>
+        <Route path="/auth" element={<AuthRoute><Auth /></AuthRoute>} />
+        <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+        <Route path="/accounts" element={<ProtectedRoute><Accounts /></ProtectedRoute>} />
+        <Route path="/contacts" element={<ProtectedRoute><Contacts /></ProtectedRoute>} />
+        <Route path="/deals" element={<ProtectedRoute><DealsPage /></ProtectedRoute>} />
+        <Route path="/campaigns" element={<ProtectedRoute><Campaigns /></ProtectedRoute>} />
+        <Route path="/campaigns/:id" element={<ProtectedRoute><CampaignDetail /></ProtectedRoute>} />
+        <Route path="/action-items" element={<ProtectedRoute><ActionItems /></ProtectedRoute>} />
+        <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
+        <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+        <Route path="*" element={<ProtectedRoute><NotFound /></ProtectedRoute>} />
+      </Routes>
+    </AppErrorBoundary>
+  );
+};
+
 const AppRouter = () => (
   <BrowserRouter>
-    <Routes>
-      {/* Public test route for sticky header verification */}
-      <Route path="/sticky-header-test" element={
-        <Suspense fallback={<PageLoader />}>
-          <StickyHeaderTest />
-        </Suspense>
-      } />
-      <Route path="/auth" element={
-        <Suspense fallback={<PageLoader />}>
-          <AuthRoute>
-            <Auth />
-          </AuthRoute>
-        </Suspense>
-      } />
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      <Route path="/dashboard" element={
-        <ProtectedRoute>
-          <Dashboard />
-        </ProtectedRoute>
-      } />
-      <Route path="/accounts" element={
-        <ProtectedRoute>
-          <Accounts />
-        </ProtectedRoute>
-      } />
-      <Route path="/contacts" element={
-        <ProtectedRoute>
-          <Contacts />
-        </ProtectedRoute>
-      } />
-      <Route path="/leads" element={
-        <ProtectedRoute>
-          <Leads />
-        </ProtectedRoute>
-      } />
-      <Route path="/meetings" element={
-        <ProtectedRoute>
-          <Meetings />
-        </ProtectedRoute>
-      } />
-      <Route path="/deals" element={
-        <ProtectedRoute>
-          <DealsPage />
-        </ProtectedRoute>
-      } />
-      <Route path="/notifications" element={
-        <ProtectedRoute>
-          <Notifications />
-        </ProtectedRoute>
-      } />
-      <Route path="/tasks" element={
-        <ProtectedRoute>
-          <Tasks />
-        </ProtectedRoute>
-      } />
-      <Route path="/settings" element={
-        <ProtectedRoute>
-          <Settings />
-        </ProtectedRoute>
-      } />
-      <Route path="*" element={
-        <ProtectedRoute>
-          <NotFound />
-        </ProtectedRoute>
-      } />
-    </Routes>
+    <RoutedApp />
   </BrowserRouter>
 );
 
 const App = () => (
-  <PersistQueryClientProvider
-    client={queryClient}
-    persistOptions={{
-      persister,
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
-      buster: CACHE_BUSTER,
-    }}
-  >
+  <QueryClientProvider client={queryClient}>
     <SecurityEnhancedApp>
       <TooltipProvider>
         <Toaster />
@@ -303,7 +202,7 @@ const App = () => (
         <AppRouter />
       </TooltipProvider>
     </SecurityEnhancedApp>
-  </PersistQueryClientProvider>
+  </QueryClientProvider>
 );
 
 export default App;

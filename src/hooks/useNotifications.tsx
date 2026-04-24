@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
+import { useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 interface Notification {
   id: string;
@@ -12,9 +13,13 @@ interface Notification {
   status: 'read' | 'unread';
   notification_type: string;
   action_item_id: string | null;
+  module_type: string | null;
+  module_id: string | null;
   created_at: string;
   updated_at: string;
 }
+
+const ITEMS_PER_PAGE = 50;
 
 export const useNotifications = () => {
   const [currentPage, setCurrentPage] = useState(1);
@@ -22,217 +27,124 @@ export const useNotifications = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  const itemsPerPage = 50;
+  const queryKey = ['notifications', user?.id, currentPage];
 
-  // Fetch notifications with React Query
-  const { data: notificationsData, isLoading: loading } = useQuery({
-    queryKey: ['notifications', user?.id, currentPage],
+  const { data, isLoading } = useQuery({
+    queryKey,
+    enabled: !!user,
+    staleTime: 60 * 1000, // 1 min cache shared across components
     queryFn: async () => {
-      if (!user) return { notifications: [], total: 0, unreadCount: 0 };
+      if (!user) return { notifications: [], total: 0 };
 
-      // Get total count for pagination
-      const { count, error: countError } = await supabase
+      const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+      const endIndex = startIndex + ITEMS_PER_PAGE - 1;
+
+      // Single combined call: get rows + exact count
+      const { data: rows, count, error } = await supabase
         .from('notifications')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id);
-
-      if (countError) throw countError;
-
-      // Get paginated notifications
-      const startIndex = (currentPage - 1) * itemsPerPage;
-      const endIndex = startIndex + itemsPerPage - 1;
-      
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
+        .select('*', { count: 'exact' })
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .range(startIndex, endIndex);
 
       if (error) throw error;
 
-      // Get total unread count separately
-      const { data: unreadData, error: unreadError } = await supabase
-        .from('notifications')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('status', 'unread');
-      
-      if (unreadError) throw unreadError;
-
-      const typedNotifications: Notification[] = (data || []).map(item => ({
+      const typed: Notification[] = (rows || []).map(item => ({
         ...item,
-        status: item.status as 'read' | 'unread'
+        status: item.status as 'read' | 'unread',
       }));
 
-      return {
-        notifications: typedNotifications,
-        total: count || 0,
-        unreadCount: unreadData?.length || 0
-      };
+      return { notifications: typed, total: count || 0 };
     },
-    enabled: !!user,
-    staleTime: 2 * 60 * 1000, // 2 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
   });
 
-  const notifications = notificationsData?.notifications || [];
-  const totalNotifications = notificationsData?.total || 0;
-  const unreadCount = notificationsData?.unreadCount || 0;
+  const notifications = data?.notifications || [];
+  const totalNotifications = data?.total || 0;
+  // Derive unread count from cached page (good enough for bell; full count via realtime invalidation)
+  const unreadCount = notifications.filter(n => n.status === 'unread').length;
 
-  // Mark as read mutation
-  const markAsReadMutation = useMutation({
-    mutationFn: async (notificationId: string) => {
-      if (!user) throw new Error('User not authenticated');
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['notifications', user?.id] });
+  };
 
+  // Mark notification as read
+  const markAsRead = async (notificationId: string) => {
+    if (!user) return;
+    try {
       const { error } = await supabase
         .from('notifications')
         .update({ status: 'read' })
         .eq('id', notificationId)
         .eq('user_id', user.id);
-
       if (error) throw error;
-      return notificationId;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications', user?.id] });
-    },
-    onError: (error) => {
+      invalidate();
+    } catch (error) {
       console.error('Error marking notification as read:', error);
-    },
-  });
+    }
+  };
 
-  // Mark all as read mutation
-  const markAllAsReadMutation = useMutation({
-    mutationFn: async () => {
-      if (!user) throw new Error('User not authenticated');
-
+  // Mark all notifications as read
+  const markAllAsRead = async () => {
+    if (!user) return;
+    try {
       const { error } = await supabase
         .from('notifications')
         .update({ status: 'read' })
         .eq('user_id', user.id)
         .eq('status', 'unread');
-
       if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications', user?.id] });
-      toast({
-        title: "Success",
-        description: "All notifications marked as read"
-      });
-    },
-    onError: (error) => {
+      invalidate();
+      toast({ title: "Success", description: "All notifications marked as read" });
+    } catch (error) {
       console.error('Error marking all notifications as read:', error);
-      toast({
-        title: "Error",
-        description: "Failed to mark notifications as read",
-        variant: "destructive"
-      });
-    },
-  });
+      toast({ title: "Error", description: "Failed to mark notifications as read", variant: "destructive" });
+    }
+  };
 
-  // Delete notification mutation
-  const deleteNotificationMutation = useMutation({
-    mutationFn: async (notificationId: string) => {
-      if (!user) throw new Error('User not authenticated');
-
+  // Delete notification
+  const deleteNotification = async (notificationId: string) => {
+    if (!user) return;
+    try {
       const { error } = await supabase
         .from('notifications')
         .delete()
         .eq('id', notificationId)
         .eq('user_id', user.id);
-
       if (error) throw error;
-      return notificationId;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications', user?.id] });
-      toast({
-        title: "Success",
-        description: "Notification deleted"
-      });
-    },
-    onError: (error) => {
+      invalidate();
+      toast({ title: "Success", description: "Notification deleted" });
+    } catch (error) {
       console.error('Error deleting notification:', error);
-      toast({
-        title: "Error",
-        description: "Failed to delete notification",
-        variant: "destructive"
-      });
-    },
-  });
+      toast({ title: "Error", description: "Failed to delete notification", variant: "destructive" });
+    }
+  };
 
-  // Wrapper functions to maintain API compatibility
-  const markAsRead = useCallback(async (notificationId: string) => {
-    await markAsReadMutation.mutateAsync(notificationId);
-  }, [markAsReadMutation]);
-
-  const markAllAsRead = useCallback(async () => {
-    await markAllAsReadMutation.mutateAsync();
-  }, [markAllAsReadMutation]);
-
-  const deleteNotification = useCallback(async (notificationId: string) => {
-    await deleteNotificationMutation.mutateAsync(notificationId);
-  }, [deleteNotificationMutation]);
-
-  const fetchNotifications = useCallback(async (page: number = 1) => {
-    setCurrentPage(page);
-  }, []);
-
-  // Set up real-time subscription for notifications
+  // Single realtime subscription — invalidates cache on changes
   useEffect(() => {
     if (!user) return;
 
-    // Subscribe to real-time changes
     const channel = supabase
-      .channel('notifications-changes')
+      .channel(`notifications-${user.id}`)
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'notifications',
-          filter: `user_id=eq.${user.id}`
+          filter: `user_id=eq.${user.id}`,
         },
         (payload) => {
-          console.log('New notification received:', payload);
-          // Invalidate query to refetch
+          // Invalidate cache so all consumers refetch
           queryClient.invalidateQueries({ queryKey: ['notifications', user.id] });
 
-          // Show toast notification for new action item notifications
-          const newNotification = payload.new as Notification;
-          if (newNotification.notification_type === 'action_item') {
+          // Toast for new action item notifications
+          if (payload.eventType === 'INSERT' && payload.new?.notification_type === 'action_item') {
             toast({
               title: "New Action Item Notification",
-              description: newNotification.message,
+              description: payload.new.message,
               duration: 5000,
             });
           }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${user.id}`
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ['notifications', user.id] });
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${user.id}`
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ['notifications', user.id] });
         }
       )
       .subscribe();
@@ -242,17 +154,21 @@ export const useNotifications = () => {
     };
   }, [user, queryClient, toast]);
 
+  const fetchNotifications = (page: number = 1) => {
+    setCurrentPage(page);
+  };
+
   return {
     notifications,
     unreadCount,
-    loading,
+    loading: isLoading,
     currentPage,
     totalNotifications,
-    itemsPerPage,
+    itemsPerPage: ITEMS_PER_PAGE,
     markAsRead,
     markAllAsRead,
     deleteNotification,
     fetchNotifications,
-    setCurrentPage
+    setCurrentPage,
   };
 };

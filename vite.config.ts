@@ -9,24 +9,45 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
   },
-  plugins: [react(), mode === 'development' && componentTagger()].filter(Boolean),
+  plugins: [
+    react(),
+    mode === 'development' && componentTagger(),
+  ].filter(Boolean),
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
-    // Prevent multiple React copies (fixes: Cannot read properties of null (reading 'useState'))
-    dedupe: ["react", "react-dom"],
   },
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          // Split vendor chunks to reduce initial bundle size
-          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          'vendor-ui': ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', '@radix-ui/react-popover', '@radix-ui/react-tooltip'],
-          'vendor-charts': ['recharts'],
-          'vendor-query': ['@tanstack/react-query'],
-          'vendor-forms': ['react-hook-form', '@hookform/resolvers', 'zod'],
+        manualChunks: (id) => {
+          if (id.includes('node_modules')) {
+            if (id.includes('@supabase/supabase-js')) return 'supabase';
+            if (id.includes('recharts') || id.includes('d3-')) return 'recharts';
+            if (id.includes('lucide-react')) return 'lucide';
+            if (id.includes('@radix-ui')) return 'radix';
+            if (id.includes('@hello-pangea/dnd') || id.includes('react-beautiful-dnd')) return 'dnd';
+            if (id.includes('@tanstack/react-query')) return 'query';
+            if (id.includes('date-fns')) return 'dates';
+            if (
+              id.includes('/react/') ||
+              id.includes('/react-dom/') ||
+              id.includes('/react-router-dom/') ||
+              id.includes('/react-router/') ||
+              id.includes('/scheduler/')
+            ) return 'react-vendor';
+            if (
+              id.includes('react-hook-form') ||
+              id.includes('@hookform') ||
+              id.includes('/zod/')
+            ) return 'forms';
+            if (
+              id.includes('clsx') ||
+              id.includes('tailwind-merge') ||
+              id.includes('class-variance-authority')
+            ) return 'utils';
+          }
         },
       },
     },

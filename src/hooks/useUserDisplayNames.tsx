@@ -1,209 +1,171 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
-// LocalStorage cache key
-const CACHE_KEY = 'user_display_names_cache';
-const CACHE_EXPIRY_KEY = 'user_display_names_expiry';
-const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
-
-// Create a global in-memory cache
+// Module-level shared cache to dedupe across component instances
 const displayNameCache = new Map<string, string>();
+// In-flight fetch promises keyed by sorted-id list to dedupe parallel calls
+const pendingFetches = new Map<string, Promise<Record<string, string>>>();
 
-// Track pending requests to prevent duplicate fetches
-const pendingRequests = new Map<string, Promise<Record<string, string>>>();
+async function fetchDisplayNamesForIds(ids: string[]): Promise<Record<string, string>> {
+  if (ids.length === 0) return {};
+  const key = [...ids].sort().join(',');
+  const existing = pendingFetches.get(key);
+  if (existing) return existing;
 
-// Load cache from localStorage on module init
-const loadCacheFromStorage = () => {
-  try {
-    const expiry = localStorage.getItem(CACHE_EXPIRY_KEY);
-    if (expiry && Date.now() > parseInt(expiry)) {
-      // Cache expired, clear it
-      localStorage.removeItem(CACHE_KEY);
-      localStorage.removeItem(CACHE_EXPIRY_KEY);
-      return;
-    }
-    
-    const cached = localStorage.getItem(CACHE_KEY);
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      Object.entries(parsed).forEach(([id, name]) => {
-        displayNameCache.set(id, name as string);
-      });
-    }
-  } catch (e) {
-    // Silently fail - localStorage might not be available
-  }
-};
-
-// Save cache to localStorage
-const saveCacheToStorage = () => {
-  try {
-    const cacheObj: Record<string, string> = {};
-    displayNameCache.forEach((name, id) => {
-      cacheObj[id] = name;
-    });
-    localStorage.setItem(CACHE_KEY, JSON.stringify(cacheObj));
-    localStorage.setItem(CACHE_EXPIRY_KEY, (Date.now() + CACHE_TTL).toString());
-  } catch (e) {
-    // Silently fail
-  }
-};
-
-// Initialize cache from localStorage
-loadCacheFromStorage();
-
-// Batch fetch function with deduplication
-const fetchDisplayNamesForIds = async (userIds: string[]): Promise<Record<string, string>> => {
-  // Create a cache key for this batch
-  const batchKey = [...userIds].sort().join(',');
-  
-  // Check if there's already a pending request for this exact batch
-  if (pendingRequests.has(batchKey)) {
-    return pendingRequests.get(batchKey)!;
-  }
-  
-  const fetchPromise = (async () => {
-    const newDisplayNames: Record<string, string> = {};
-    
+  const promise = (async () => {
+    const result: Record<string, string> = {};
     try {
-      // Try direct profiles query first (faster, no edge function overhead)
-      const { data: profilesData, error: profilesError } = await supabase
+      // Direct query to profiles table — much faster than the edge function
+      // which calls auth.admin.listUsers() (returns ALL users every time).
+      const { data: profilesData } = await supabase
         .from('profiles')
         .select('id, full_name, "Email ID"')
-        .in('id', userIds);
-
-      if (!profilesError && profilesData) {
-        profilesData.forEach((profile) => {
-          let displayName = "Unknown User";
-          
-          if (profile.full_name?.trim() && 
-              !profile.full_name.includes('@') &&
-              profile.full_name !== profile["Email ID"]) {
-            displayName = profile.full_name.trim();
-          } else if (profile["Email ID"]) {
-            displayName = profile["Email ID"].split('@')[0];
-          }
-          
-          newDisplayNames[profile.id] = displayName;
-          displayNameCache.set(profile.id, displayName);
-        });
-      }
-
-      // Set fallback for any missing users
-      userIds.forEach(id => {
-        if (!newDisplayNames[id]) {
-          newDisplayNames[id] = "Unknown User";
-          displayNameCache.set(id, "Unknown User");
+        .in('id', ids);
+      profilesData?.forEach((profile: any) => {
+        let displayName = "Unknown User";
+        if (
+          profile.full_name?.trim() &&
+          !profile.full_name.includes('@') &&
+          profile.full_name !== profile["Email ID"]
+        ) {
+          displayName = profile.full_name.trim();
+        } else if (profile["Email ID"]) {
+          displayName = profile["Email ID"].split('@')[0];
         }
+        result[profile.id] = displayName;
       });
-
-      // Persist to localStorage
-      saveCacheToStorage();
-      
+      ids.forEach((id) => {
+        if (!result[id]) result[id] = "Unknown User";
+        displayNameCache.set(id, result[id]);
+      });
     } catch (error) {
-      console.warn('Error fetching display names:', error);
-      // Set fallback names
-      userIds.forEach(id => {
-        if (!displayNameCache.has(id)) {
-          newDisplayNames[id] = "Unknown User";
-          displayNameCache.set(id, "Unknown User");
-        }
+      console.error('useUserDisplayNames: error', error);
+      ids.forEach((id) => {
+        result[id] = "Unknown User";
+        displayNameCache.set(id, "Unknown User");
       });
+    } finally {
+      pendingFetches.delete(key);
     }
-    
-    return newDisplayNames;
+    return result;
   })();
-  
-  // Store the pending request
-  pendingRequests.set(batchKey, fetchPromise);
-  
-  // Clean up after completion
-  fetchPromise.finally(() => {
-    pendingRequests.delete(batchKey);
-  });
-  
-  return fetchPromise;
-};
+
+  pendingFetches.set(key, promise);
+  return promise;
+}
 
 export const useUserDisplayNames = (userIds: string[]) => {
-  const [displayNames, setDisplayNames] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(false);
-  const previousUserIds = useRef<string[]>([]);
+  const validIds = useMemo(
+    () => Array.from(new Set(userIds.filter((id) => id && id.trim() !== ''))).sort(),
+    [userIds.join(',')] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
-  useEffect(() => {
-    // Filter out empty/null userIds
-    const validUserIds = userIds.filter(id => id && id.trim() !== '');
-    
-    if (validUserIds.length === 0) {
-      setDisplayNames({});
-      setLoading(false);
-      return;
-    }
+  // Identify uncached IDs
+  const uncachedIds = useMemo(
+    () => validIds.filter((id) => !displayNameCache.has(id)),
+    [validIds]
+  );
 
-    // Check if userIds actually changed
-    const sortedCurrentIds = [...validUserIds].sort();
-    const sortedPreviousIds = [...previousUserIds.current].sort();
-    
-    const hasChanged = sortedCurrentIds.length !== sortedPreviousIds.length || 
-      !sortedCurrentIds.every((id, index) => id === sortedPreviousIds[index]);
-    
-    if (!hasChanged) return;
+  const queryKey = ['user-display-names', uncachedIds.join(',')];
 
-    previousUserIds.current = validUserIds;
+  const { data: fetched, isLoading } = useQuery({
+    queryKey,
+    queryFn: () => fetchDisplayNamesForIds(uncachedIds),
+    enabled: uncachedIds.length > 0,
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
 
-    // Check cache first for immediate display
-    const cachedNames: Record<string, string> = {};
-    const uncachedIds: string[] = [];
-    
-    validUserIds.forEach(id => {
-      if (displayNameCache.has(id)) {
-        cachedNames[id] = displayNameCache.get(id)!;
-      } else {
-        uncachedIds.push(id);
-      }
+  const displayNames = useMemo(() => {
+    const out: Record<string, string> = {};
+    validIds.forEach((id) => {
+      out[id] = displayNameCache.get(id) || fetched?.[id] || "";
     });
+    return out;
+  }, [validIds, fetched]);
 
-    // Set cached names immediately (no flicker)
-    if (Object.keys(cachedNames).length > 0) {
-      setDisplayNames(prev => ({ ...prev, ...cachedNames }));
-    }
-
-    // If all IDs are cached, we're done
-    if (uncachedIds.length === 0) {
-      setLoading(false);
-      return;
-    }
-
-    // Fetch uncached IDs
-    setLoading(true);
-    
-    fetchDisplayNamesForIds(uncachedIds)
-      .then(newNames => {
-        setDisplayNames(prev => ({ ...prev, ...cachedNames, ...newNames }));
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [userIds.join(',')]);
-
-  return { displayNames, loading };
+  return { displayNames, loading: isLoading };
 };
 
-// Pre-warm cache with common user IDs (call on app init)
-export const preloadUserDisplayNames = async (userIds: string[]) => {
-  const uncachedIds = userIds.filter(id => id && !displayNameCache.has(id));
-  if (uncachedIds.length > 0) {
-    await fetchDisplayNamesForIds(uncachedIds);
-  }
-};
+type AllUser = { id: string; display_name: string; email: string; status: 'active' | 'deactivated' };
 
-// Clear cache (useful for logout)
-export const clearUserDisplayNamesCache = () => {
-  displayNameCache.clear();
+const fetchAllUsers = async (): Promise<AllUser[]> => {
   try {
-    localStorage.removeItem(CACHE_KEY);
-    localStorage.removeItem(CACHE_EXPIRY_KEY);
-  } catch (e) {
-    // Silently fail
+    const { data: functionResult, error: functionError } = await supabase.functions.invoke(
+      'user-admin',
+      { method: 'GET' }
+    );
+
+    if (functionError) throw functionError;
+
+    if (functionResult?.users) {
+      const userList: AllUser[] = functionResult.users.map((authUser: any) => {
+        const metadata = authUser.user_metadata || {};
+        let displayName = "Unknown User";
+        if (metadata.full_name?.trim() && !metadata.full_name.includes('@')) {
+          displayName = metadata.full_name.trim();
+        } else if (authUser.email) {
+          displayName = authUser.email.split('@')[0];
+        }
+        const isDeactivated = authUser.banned_until && new Date(authUser.banned_until) > new Date();
+        return {
+          id: authUser.id,
+          display_name: displayName,
+          email: authUser.email || '',
+          status: isDeactivated ? 'deactivated' as const : 'active' as const,
+        };
+      });
+
+      return userList
+        .filter((u) => u.status === 'active')
+        .sort((a, b) => a.display_name.localeCompare(b.display_name));
+    }
+    return [];
+  } catch (error) {
+    console.error('useAllUsers: Error fetching users, falling back to profiles:', error);
+    const { data, error: profilesError } = await supabase
+      .from('profiles')
+      .select('id, full_name, "Email ID"')
+      .order('full_name', { ascending: true });
+
+    if (profilesError || !data) return [];
+
+    return data.map((profile: any) => {
+      let displayName = "Unknown User";
+      if (
+        profile.full_name?.trim() &&
+        !profile.full_name.includes('@') &&
+        profile.full_name !== profile["Email ID"]
+      ) {
+        displayName = profile.full_name.trim();
+      } else if (profile["Email ID"]) {
+        displayName = profile["Email ID"].split('@')[0];
+      }
+      return {
+        id: profile.id,
+        display_name: displayName,
+        email: profile["Email ID"] || '',
+        status: 'active' as const,
+      };
+    });
   }
 };
+
+// Helper hook that fetches all users (cached via React Query, shared across pages)
+export const useAllUsers = () => {
+  const { data: users = [], isLoading: loading } = useQuery({
+    queryKey: ['all-users'],
+    queryFn: fetchAllUsers,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000,
+  });
+
+  const getUserDisplayName = (userId: string) => {
+    const user = users.find((u) => u.id === userId);
+    return user?.display_name || 'Unknown User';
+  };
+
+  return { users, loading, getUserDisplayName };
+};
+
