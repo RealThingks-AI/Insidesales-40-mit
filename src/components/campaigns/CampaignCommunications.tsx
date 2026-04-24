@@ -1718,6 +1718,25 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, viewMode, 
                 <RefreshCw className={`h-3 w-3 ${isSyncing ? "animate-spin" : ""}`} />
               </Button>
             )}
+            {outreachTab === "email" && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs gap-1"
+                onClick={() => {
+                  // Scope: if a thread is open, restrict to that thread's contact.
+                  const composite = selectedThreadKey || "";
+                  const parts = composite.split("::");
+                  const contactScope = parts.length === 2 && parts[1] && parts[1] !== "no-contact" ? parts[1] : undefined;
+                  void runResync(contactScope);
+                }}
+                disabled={isResyncing || isSyncing}
+                title={selectedThreadKey ? "Re-sync replies for the open thread's contact" : "Re-sync replies for the whole campaign"}
+              >
+                <RefreshCw className={`h-3 w-3 ${isResyncing ? "animate-spin" : ""}`} />
+                Re-sync replies
+              </Button>
+            )}
             {showSendEmail && (
               <TooltipProvider>
                 <Tooltip>
