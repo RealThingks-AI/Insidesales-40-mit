@@ -90,6 +90,15 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, viewMode, 
   const [openThreads, setOpenThreads] = useState<Set<string>>(new Set());
   const [selectedThreadKey, setSelectedThreadKey] = useState<string | null>(null);
   const [threadInitDone, setThreadInitDone] = useState(false);
+  const [isResyncing, setIsResyncing] = useState(false);
+  const [resyncResult, setResyncResult] = useState<null | {
+    correlation_id?: string;
+    inserted?: number;
+    scanned?: number;
+    durationMs?: number;
+    skipped?: Record<string, number>;
+    scope?: { campaign_id?: string; contact_id?: string };
+  }>(null);
 
   useEffect(() => {
     if (initialChannel) setOutreachTab(initialChannel);
