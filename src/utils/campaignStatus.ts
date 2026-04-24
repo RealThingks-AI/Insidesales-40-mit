@@ -1,5 +1,20 @@
 // Shared campaign status constants & helpers — used by list, dashboard, detail, inline dropdowns.
 
+/**
+ * Single source of truth for "account status from contact stages".
+ * Both `Qualified` and `Converted` count as `Deal Created` so the Audience tab
+ * agrees with the Analytics funnel and the recomputed `campaign_accounts.status`.
+ */
+export type ContactStageLike = { stage?: string | null };
+
+export function deriveAccountStatusFromContacts(contacts: ContactStageLike[]): string {
+  if (!contacts || contacts.length === 0) return "Not Contacted";
+  if (contacts.some((c) => c.stage === "Qualified" || c.stage === "Converted")) return "Deal Created";
+  if (contacts.some((c) => c.stage === "Responded")) return "Responded";
+  if (contacts.some((c) => c.stage && c.stage !== "Not Contacted")) return "Contacted";
+  return "Not Contacted";
+}
+
 export const STATUS_LIST = ["Draft", "Active", "Paused", "Completed"] as const;
 export type CampaignStatus = (typeof STATUS_LIST)[number];
 
