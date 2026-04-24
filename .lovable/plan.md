@@ -1,152 +1,97 @@
 
 
-# Lock down cross-thread email leaks + observability + manual controls
+# Reply-attribution hardening — status & remaining work
 
-Comprehensive hardening of reply attribution with full audit trail, monitoring dashboard, manual re-sync, and PDF reporting.
-
-## 1) Stronger subject normalization (shared helper)
-
-Create `supabase/functions/_shared/subject-normalize.ts` as the single source of truth:
-
-- Strip stacked reply/forward prefixes recursively, including localized variants:
-  - English: `Re`, `Fw`, `Fwd`
-  - German: `AW`, `WG`, `Antwort`, `Weitergeleitet`
-  - French: `Rép`, `Tr`
-  - Spanish: `RV`, `RES`
-  - Italian: `R`, `I`
-  - Dutch: `Antw`, `Doorst`
-- Strip bracket tags: `[EXT]`, `[External]`, `[SPAM]`, `[#1234]`
-- Unicode NFKC normalize, remove zero-width chars, collapse whitespace, lowercase, trim trailing punctuation
-- Export `areSubjectsCompatible(a, b)` using token Jaccard ≥ 0.6 OR substring containment ≥ 8 chars
-- Mirror in `src/utils/subjectNormalize.ts` for UI guard parity
-
-Apply in:
-- `check-email-replies/index.ts` (replaces inline normalizer)
-- `_shared/azure-email.ts`
-- `CampaignCommunications.tsx` UI guard
-
-Tests in `supabase/functions/check-email-replies/subject_compat_test.ts`:
-- Lukas case must return `false`
-- `Re: Re: Fw: Hello` vs `Hello` → `true`
-- `AW: Angebot` vs `Angebot` → `true`
-- `[EXT] Re: Proposal` vs `Proposal` → `true`
-- Typo tolerance + null/empty safety
-
-## 2) Persist every skipped reply
-
-New table `email_reply_skip_log`:
-
-```text
-id                       uuid pk
-created_at               timestamptz default now()
-campaign_id              uuid null
-contact_id               uuid null
-contact_email            text
-sender_email             text
-subject                  text
-conversation_id          text
-received_at              timestamptz
-parent_communication_id  uuid null
-parent_subject           text
-parent_sent_at           timestamptz
-skip_reason              text   -- chronology | subject_mismatch | contact_mismatch | ambiguous_candidates | no_eligible_parent
-details                  jsonb
-correlation_id           uuid null
-```
-
-RLS: admins + campaign owners can SELECT; only service role can INSERT. Indexes on `(campaign_id, created_at)`, `(contact_id, created_at)`, `(skip_reason)`, `(correlation_id)`.
-
-`check-email-replies` writes a structured row per skip instead of `console.log`.
-
-## 3) Audit page
-
-New route `/settings/email-skip-audit` (admin-gated, linked from `AdminSettingsPage` Logs tab):
-
-- `src/pages/EmailSkipAuditLog.tsx` + `src/components/settings/EmailSkipAuditTable.tsx`
-- Filters: date range, campaign, contact, reason
-- Columns: When, Campaign, Contact, Sender email, Subject, Reason badge, Parent subject, Parent sent at
-- Row click → side drawer with full `details` JSON and considered candidates
-- `StandardPagination` + CSV export + PDF download button
-
-## 4) Reply Health dashboard on campaign page
-
-New tab on `/campaigns/:slug` rendered by `src/components/campaigns/ReplyHealthDashboard.tsx`:
-
-- KPI cards: Valid replies (30d), Skipped replies (30d), Skip rate %, Active guards triggered
-- Line chart (recharts): valid vs skipped per day, last 30 days
-- Stacked bar: top skip reasons
-- Table: top offending senders/conversations
-- Date-range picker (7d / 30d / 90d / custom)
-
-Sources:
-- valid: `campaign_communications` where `sent_via='graph-sync'` and `campaign_id=:id`
-- skipped: `email_reply_skip_log` where `campaign_id=:id`
-
-## 5) Manual re-run sync
-
-`check-email-replies/index.ts` accepts POST body:
-
-```json
-{ "campaign_id": "...", "contact_id": "optional" }
-```
-
-- Scope Graph search and DB queries to that scope
-- Stamp every new row (skip log + outbound) with a generated `correlation_id`
-- Return `{ correlation_id, scanned, inserted, skipped: { chronology, subject_mismatch, contact_mismatch, ambiguous, no_parent }, durationMs }`
-
-UI in `CampaignCommunications.tsx`:
-- New **Re-sync replies** button next to existing Refresh
-- Scoped to selected thread's contact when one is open, else whole campaign
-- Result dialog shows per-reason counts + "View skipped" link deep-linking to audit page filtered by `correlation_id`
-
-## 6) PDF report
-
-New edge function `supabase/functions/email-skip-report/index.ts`:
-
-- Input: `{ campaign_id?, from, to }`
-- Pulls from `email_reply_skip_log`
-- Generates PDF via `pdf-lib` (Deno-compatible)
-- Sections: cover (range, totals, reason breakdown), per-day breakdown table, per-row detail table
-- Returns `application/pdf` stream
-
-UI: **Download PDF report** button on both audit page and Reply Health dashboard with date-range picker.
-
-## Files
+## What's already in place ✅
 
 **Edge functions**
-- `supabase/functions/_shared/subject-normalize.ts` (new)
-- `supabase/functions/check-email-replies/index.ts` (use helper, scoped re-run, skip log, summary)
-- `supabase/functions/check-email-replies/subject_compat_test.ts` (new)
-- `supabase/functions/email-skip-report/index.ts` (new)
-- `supabase/config.toml` (register `email-skip-report`)
+- `supabase/functions/_shared/subject-normalize.ts` — full helper with all localized prefixes, bracket tags, NFKC, `areSubjectsCompatible` (Jaccard ≥ 0.6 + substring ≥ 8)
+- `supabase/functions/check-email-replies/index.ts` — uses the shared helper, accepts POST `{ campaign_id, contact_id }`, scopes queries, generates `correlation_id`, writes structured rows to `email_reply_skip_log` for every skip path (chronology, subject_mismatch, contact_mismatch, ambiguous, no_parent), returns the summary object
+- `supabase/functions/check-email-replies/subject_compat_test.ts` — test file present
+- `supabase/functions/email-skip-report/index.ts` — PDF generator using `pdf-lib` (cover, breakdown, daily, per-row detail, page footer)
+- `supabase/config.toml` — `email-skip-report` registered with `verify_jwt = true`
 
-**Database migration**
-- `email_reply_skip_log` table + RLS + indexes
+**Database**
+- `email_reply_skip_log` table exists with all planned columns, RLS (admins + campaign owners SELECT, service-role INSERT only)
 
 **Frontend**
-- `src/utils/subjectNormalize.ts` (new)
-- `src/components/campaigns/CampaignCommunications.tsx` (normalizer + Re-sync button + result dialog)
-- `src/components/campaigns/ReplyHealthDashboard.tsx` (new)
-- `src/pages/CampaignDetail.tsx` (mount Reply Health tab)
-- `src/pages/EmailSkipAuditLog.tsx` (new)
-- `src/components/settings/EmailSkipAuditTable.tsx` (new)
-- `src/components/settings/AdminSettingsPage.tsx` (link to audit page)
-- `src/App.tsx` (register `/settings/email-skip-audit`)
+- `src/utils/subjectNormalize.ts` — UI mirror of helper
+- `src/components/settings/EmailSkipAuditTable.tsx` (286 lines) — table component
+- `src/pages/EmailSkipAuditLog.tsx` (53 lines) — admin-gated page
+- `src/components/campaigns/ReplyHealthDashboard.tsx` (243 lines) — KPIs/charts component
 
-## Verification
+---
 
-- Unit tests pass for Lukas pair and localized prefixes
-- Re-sync on Campaign 2 → Lukas returns `inserted: 0, skipped: { subject_mismatch: 1 }` and writes audit row
-- Audit page lists the row with reason `subject_mismatch`
-- Reply Health dashboard shows 1 skip in chosen window
-- PDF for that range contains the row with timestamps and blocking guard
-- No new graph-sync row created for replies whose normalized subject doesn't match parent
+## What's broken or missing ❌
 
-## Technical notes
+### 1. BUILD ERROR — blocks deploy
+`email-skip-report/index.ts` imports `npm:pdf-lib@1.17.1`, but the Deno worker can't resolve npm specifiers without a `node_modules` dir or `nodeModulesDir: "auto"` in `deno.json`. Plan said pdf-lib is fine, but the actual sandbox rejects it.
 
-- `correlation_id` ties manual re-runs to their resulting skip log entries for traceability
-- Subject normalizer lives in `_shared/` to guarantee server/client parity; UI mirror imports the same logic shape
-- Skip log uses service-role-only inserts to prevent client tampering; RLS lets admins and campaign owners read
-- Reply Health charts reuse existing `recharts` dependency; no new packages
-- PDF generation uses `pdf-lib` from npm (Deno supports via `npm:` specifier)
+**Fix:** swap to an esm.sh import that works under Lovable's Deno: `import { PDFDocument, StandardFonts, rgb } from "https://esm.sh/pdf-lib@1.17.1?target=deno";`
+
+### 2. New pages and components are NOT wired into the app
+None of these are reachable today:
+- `src/App.tsx` has no `/settings/email-skip-audit` route → **EmailSkipAuditLog page is dead code**
+- `src/pages/CampaignDetail.tsx` does not mount `ReplyHealthDashboard` → **dashboard is dead code**
+- `src/components/settings/AdminSettingsPage.tsx` has no link to the audit page
+- `src/components/campaigns/CampaignCommunications.tsx` has **no Re-sync button**, no result dialog, no call to `check-email-replies` with `{ campaign_id, contact_id }`, and no deep-link to `/settings/email-skip-audit?correlation_id=…`
+
+### 3. CSV / PDF buttons in audit table
+EmailSkipAuditTable needs:
+- "Download PDF report" button → invokes `email-skip-report` with current filters, downloads blob
+- "Export CSV" button using existing CSV export pattern
+- Read `?correlation_id=` from URL and apply as a hidden filter when present (so the Re-sync result deep-link works)
+
+### 4. Reply Health needs a date-range picker + PDF button
+Component exists but the plan calls for a 7d/30d/90d/custom picker and a "Download PDF report" button bound to the chosen range and current campaign id.
+
+### 5. CORS header parity
+`email-skip-report` allow-headers list is missing `x-supabase-client-platform`, `x-supabase-client-platform-version`, etc. — minor; web client may send them. Add the standard set used elsewhere.
+
+---
+
+## Implementation plan (default mode)
+
+**A. Fix the build error**
+1. `email-skip-report/index.ts` — replace `npm:pdf-lib@1.17.1` with `https://esm.sh/pdf-lib@1.17.1?target=deno`
+2. Expand CORS headers to the standard list used by other functions
+
+**B. Wire routes & links**
+3. `src/App.tsx` — add `<Route path="/settings/email-skip-audit" element={<ProtectedRoute><EmailSkipAuditLog/></ProtectedRoute>} />` (lazy import)
+4. `src/components/settings/AdminSettingsPage.tsx` — add a "View email reply skip audit" link/button in the Logs section pointing to `/settings/email-skip-audit`
+5. `src/pages/CampaignDetail.tsx` — add a "Reply health" tab that renders `<ReplyHealthDashboard campaignId={id} />`
+
+**C. Re-sync UX in CampaignCommunications**
+6. Add **Re-sync replies** button next to the existing Refresh control
+7. Scope: pass `contact_id` when a thread is open, otherwise just `campaign_id`
+8. On success, open a small dialog summarising `inserted`, `skipped` per reason, and a "View skipped" link to `/settings/email-skip-audit?correlation_id=…`
+9. Apply the UI subject-compat guard (using `src/utils/subjectNormalize.ts`) when grouping inbound replies into threads — drop any inbound whose normalized subject is incompatible with the parent
+
+**D. Audit table polish**
+10. Read `correlation_id` from query string and apply as filter chip
+11. **Export CSV** button (current filtered rows)
+12. **Download PDF report** button → POST to `email-skip-report` with `{ campaign_id?, from, to }` and stream the blob to the browser
+13. Side drawer on row click showing the full `details` JSON pretty-printed
+
+**E. Reply Health polish**
+14. Date-range presets (7d / 30d / 90d / custom) feeding both the queries and the PDF button
+15. **Download PDF report** button bound to selected range + `campaignId`
+
+**F. Verification**
+16. Deno test for `subject_compat_test.ts` passes (Lukas false; localized prefixes true; null-safe)
+17. Manual re-sync on Campaign 2 → response shape matches `{ correlation_id, inserted, skipped: {...} }` and a row appears in audit page
+18. Reply Health shows the new skip in chosen window
+19. PDF downloads cleanly and contains the row
+
+## Files to change
+
+- `supabase/functions/email-skip-report/index.ts` — pdf-lib import + CORS
+- `src/App.tsx` — register route
+- `src/pages/CampaignDetail.tsx` — mount Reply Health tab
+- `src/components/settings/AdminSettingsPage.tsx` — link to audit page
+- `src/components/campaigns/CampaignCommunications.tsx` — Re-sync button, dialog, UI subject guard
+- `src/components/settings/EmailSkipAuditTable.tsx` — correlation_id filter, CSV export, PDF button, details drawer
+- `src/components/campaigns/ReplyHealthDashboard.tsx` — date-range picker + PDF button
+
+No new dependencies, no new database changes — schema is already correct.
 
