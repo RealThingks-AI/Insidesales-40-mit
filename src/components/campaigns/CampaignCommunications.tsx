@@ -1911,6 +1911,74 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, viewMode, 
         onBatchComplete={handleBatchComplete}
       />
 
+      {/* Re-sync result dialog */}
+      <Dialog open={!!resyncResult} onOpenChange={(v) => { if (!v) setResyncResult(null); }}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle className="text-base">Re-sync complete</DialogTitle>
+          </DialogHeader>
+          {resyncResult && (
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center justify-between rounded-md border p-3">
+                <div>
+                  <div className="text-xs text-muted-foreground">New replies attached</div>
+                  <div className="text-2xl font-semibold text-foreground">{resyncResult.inserted ?? 0}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-muted-foreground">Messages scanned</div>
+                  <div className="text-2xl font-semibold text-foreground">{resyncResult.scanned ?? 0}</div>
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Skipped by guard</div>
+                <div className="rounded-md border divide-y">
+                  {(["chronology","subject_mismatch","contact_mismatch","ambiguous_candidates","no_eligible_parent"] as const).map((k) => {
+                    const labels: Record<string, string> = {
+                      chronology: "Chronology",
+                      subject_mismatch: "Subject mismatch",
+                      contact_mismatch: "Contact mismatch",
+                      ambiguous_candidates: "Ambiguous candidates",
+                      no_eligible_parent: "No eligible parent",
+                    };
+                    const count = (resyncResult.skipped as any)?.[k] ?? 0;
+                    return (
+                      <div key={k} className="flex items-center justify-between px-3 py-1.5 text-xs">
+                        <span className="text-muted-foreground">{labels[k]}</span>
+                        <span className={`tabular-nums font-medium ${count > 0 ? "text-destructive" : "text-muted-foreground"}`}>{count}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {resyncResult.scope?.contact_id && (
+                <p className="text-[11px] text-muted-foreground">
+                  Scope: a single contact thread.
+                </p>
+              )}
+              {resyncResult.durationMs != null && (
+                <p className="text-[11px] text-muted-foreground">
+                  Completed in {Math.max(1, Math.round(resyncResult.durationMs))} ms.
+                </p>
+              )}
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:justify-between">
+            {resyncResult?.correlation_id ? (
+              <Link
+                to={`/settings/email-skip-audit?correlation_id=${resyncResult.correlation_id}`}
+                className="text-xs text-primary hover:underline"
+                onClick={() => setResyncResult(null)}
+              >
+                View skipped replies →
+              </Link>
+            ) : <span />}
+            <Button size="sm" onClick={() => setResyncResult(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* View full email modal — Outlook-style: metadata, new text, quoted block, errors */}
       <Dialog open={!!viewFullEmail} onOpenChange={(v) => { if (!v) setViewFullEmail(null); }}>
         <DialogContent className="sm:max-w-[700px] max-h-[85vh] overflow-y-auto">
