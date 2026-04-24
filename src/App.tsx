@@ -25,6 +25,7 @@ const ActionItems = lazy(() => import("./pages/ActionItems"));
 const Settings = lazy(() => import("./pages/Settings"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const Notifications = lazy(() => import("./pages/Notifications"));
+const EmailSkipAuditLog = lazy(() => import("./pages/EmailSkipAuditLog"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -181,6 +182,7 @@ const RoutedApp = () => {
         <Route path="/action-items" element={<ProtectedRoute><ActionItems /></ProtectedRoute>} />
         <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+        <Route path="/settings/email-skip-audit" element={<ProtectedRoute><EmailSkipAuditLog /></ProtectedRoute>} />
         <Route path="*" element={<ProtectedRoute><NotFound /></ProtectedRoute>} />
       </Routes>
     </AppErrorBoundary>

@@ -25,6 +25,8 @@ import { stageRanks } from "./campaignUtils";
 import { parseEmailBody } from "./emailBody";
 import { SyncStatusPill } from "./SyncStatusPill";
 import { isReachableEmail, isReachableLinkedIn, isReachablePhone, normalizeChannel, channelLabel, formatPhoneForDisplay } from "@/lib/email";
+import { areSubjectsCompatible } from "@/utils/subjectNormalize";
+import { Link } from "react-router-dom";
 
 interface Props {
   campaignId: string;
@@ -88,6 +90,15 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, viewMode, 
   const [openThreads, setOpenThreads] = useState<Set<string>>(new Set());
   const [selectedThreadKey, setSelectedThreadKey] = useState<string | null>(null);
   const [threadInitDone, setThreadInitDone] = useState(false);
+  const [isResyncing, setIsResyncing] = useState(false);
+  const [resyncResult, setResyncResult] = useState<null | {
+    correlation_id?: string;
+    inserted?: number;
+    scanned?: number;
+    durationMs?: number;
+    skipped?: Record<string, number>;
+    scope?: { campaign_id?: string; contact_id?: string };
+  }>(null);
 
   useEffect(() => {
     if (initialChannel) setOutreachTab(initialChannel);
@@ -132,6 +143,34 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, viewMode, 
       if (manual) toast({ title: "Sync failed", description: "Could not refresh replies.", variant: "destructive" });
     } finally {
       if (manual) setIsSyncing(false);
+    }
+  }, [campaignId, queryClient]);
+
+  // Manual scoped re-sync — POSTs { campaign_id, contact_id? } to check-email-replies
+  // and surfaces the per-reason skip summary so users can deep-link into the audit log.
+  const runResync = useCallback(async (contactIdScope?: string) => {
+    setIsResyncing(true);
+    try {
+      const body: Record<string, string> = { campaign_id: campaignId };
+      if (contactIdScope) body.contact_id = contactIdScope;
+      const { data, error } = await supabase.functions.invoke("check-email-replies", { body });
+      if (error) throw error;
+      const result = (data as any) || {};
+      setResyncResult({
+        correlation_id: result.correlation_id,
+        inserted: result.inserted ?? 0,
+        scanned: result.scanned ?? 0,
+        durationMs: result.durationMs,
+        skipped: result.skipped || {},
+        scope: { campaign_id: campaignId, contact_id: contactIdScope },
+      });
+      queryClient.invalidateQueries({ queryKey: ["campaign-communications", campaignId] });
+      setLastSyncedAt(new Date());
+    } catch (e: any) {
+      console.error("Re-sync error:", e);
+      toast({ title: "Re-sync failed", description: e?.message || "Could not re-sync replies.", variant: "destructive" });
+    } finally {
+      setIsResyncing(false);
     }
   }, [campaignId, queryClient]);
 
@@ -342,15 +381,25 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, viewMode, 
 
     // Email conversation threads — drop inbound rows whose sender email does
     // NOT match the bucket's contact email (orphan replies). These are
-    // surfaced separately at the bottom of the Email tab.
+    // surfaced separately at the bottom of the Email tab. Also drop inbound
+    // rows whose normalized subject is incompatible with the parent thread
+    // (defense-in-depth UI mirror of the edge-function guard).
     Object.entries(emailThreads).forEach(([compositeKey, msgs]) => {
       const sample = msgs[0];
       const contactEmail = (sample?.contacts?.email || "").trim().toLowerCase();
+      // Parent subject = first outbound (or first message) in the bucket.
+      const parentForSubject =
+        msgs.find((m) => (m.sent_via || "manual") !== "graph-sync") || msgs[0];
+      const parentSubject = parentForSubject?.subject || "";
       const cleanedMsgs: any[] = [];
       for (const m of msgs) {
         if (m.sent_via === "graph-sync" && contactEmail) {
           const senderEmail = extractSenderEmailFromNotes(m.notes);
           if (senderEmail && senderEmail !== contactEmail) {
+            orphans.push(m);
+            continue;
+          }
+          if (parentSubject && m.subject && !areSubjectsCompatible(parentSubject, m.subject)) {
             orphans.push(m);
             continue;
           }
@@ -1669,6 +1718,25 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, viewMode, 
                 <RefreshCw className={`h-3 w-3 ${isSyncing ? "animate-spin" : ""}`} />
               </Button>
             )}
+            {outreachTab === "email" && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs gap-1"
+                onClick={() => {
+                  // Scope: if a thread is open, restrict to that thread's contact.
+                  const composite = selectedThreadKey || "";
+                  const parts = composite.split("::");
+                  const contactScope = parts.length === 2 && parts[1] && parts[1] !== "no-contact" ? parts[1] : undefined;
+                  void runResync(contactScope);
+                }}
+                disabled={isResyncing || isSyncing}
+                title={selectedThreadKey ? "Re-sync replies for the open thread's contact" : "Re-sync replies for the whole campaign"}
+              >
+                <RefreshCw className={`h-3 w-3 ${isResyncing ? "animate-spin" : ""}`} />
+                Re-sync replies
+              </Button>
+            )}
             {showSendEmail && (
               <TooltipProvider>
                 <Tooltip>
@@ -1842,6 +1910,74 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, viewMode, 
         onEmailSent={handleEmailSent}
         onBatchComplete={handleBatchComplete}
       />
+
+      {/* Re-sync result dialog */}
+      <Dialog open={!!resyncResult} onOpenChange={(v) => { if (!v) setResyncResult(null); }}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle className="text-base">Re-sync complete</DialogTitle>
+          </DialogHeader>
+          {resyncResult && (
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center justify-between rounded-md border p-3">
+                <div>
+                  <div className="text-xs text-muted-foreground">New replies attached</div>
+                  <div className="text-2xl font-semibold text-foreground">{resyncResult.inserted ?? 0}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-muted-foreground">Messages scanned</div>
+                  <div className="text-2xl font-semibold text-foreground">{resyncResult.scanned ?? 0}</div>
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs text-muted-foreground mb-1">Skipped by guard</div>
+                <div className="rounded-md border divide-y">
+                  {(["chronology","subject_mismatch","contact_mismatch","ambiguous_candidates","no_eligible_parent"] as const).map((k) => {
+                    const labels: Record<string, string> = {
+                      chronology: "Chronology",
+                      subject_mismatch: "Subject mismatch",
+                      contact_mismatch: "Contact mismatch",
+                      ambiguous_candidates: "Ambiguous candidates",
+                      no_eligible_parent: "No eligible parent",
+                    };
+                    const count = (resyncResult.skipped as any)?.[k] ?? 0;
+                    return (
+                      <div key={k} className="flex items-center justify-between px-3 py-1.5 text-xs">
+                        <span className="text-muted-foreground">{labels[k]}</span>
+                        <span className={`tabular-nums font-medium ${count > 0 ? "text-destructive" : "text-muted-foreground"}`}>{count}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {resyncResult.scope?.contact_id && (
+                <p className="text-[11px] text-muted-foreground">
+                  Scope: a single contact thread.
+                </p>
+              )}
+              {resyncResult.durationMs != null && (
+                <p className="text-[11px] text-muted-foreground">
+                  Completed in {Math.max(1, Math.round(resyncResult.durationMs))} ms.
+                </p>
+              )}
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:justify-between">
+            {resyncResult?.correlation_id ? (
+              <Link
+                to={`/settings/email-skip-audit?correlation_id=${resyncResult.correlation_id}`}
+                className="text-xs text-primary hover:underline"
+                onClick={() => setResyncResult(null)}
+              >
+                View skipped replies →
+              </Link>
+            ) : <span />}
+            <Button size="sm" onClick={() => setResyncResult(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* View full email modal — Outlook-style: metadata, new text, quoted block, errors */}
       <Dialog open={!!viewFullEmail} onOpenChange={(v) => { if (!v) setViewFullEmail(null); }}>
