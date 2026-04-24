@@ -146,6 +146,34 @@ export function CampaignCommunications({ campaignId, isCampaignEnded, viewMode, 
     }
   }, [campaignId, queryClient]);
 
+  // Manual scoped re-sync — POSTs { campaign_id, contact_id? } to check-email-replies
+  // and surfaces the per-reason skip summary so users can deep-link into the audit log.
+  const runResync = useCallback(async (contactIdScope?: string) => {
+    setIsResyncing(true);
+    try {
+      const body: Record<string, string> = { campaign_id: campaignId };
+      if (contactIdScope) body.contact_id = contactIdScope;
+      const { data, error } = await supabase.functions.invoke("check-email-replies", { body });
+      if (error) throw error;
+      const result = (data as any) || {};
+      setResyncResult({
+        correlation_id: result.correlation_id,
+        inserted: result.inserted ?? 0,
+        scanned: result.scanned ?? 0,
+        durationMs: result.durationMs,
+        skipped: result.skipped || {},
+        scope: { campaign_id: campaignId, contact_id: contactIdScope },
+      });
+      queryClient.invalidateQueries({ queryKey: ["campaign-communications", campaignId] });
+      setLastSyncedAt(new Date());
+    } catch (e: any) {
+      console.error("Re-sync error:", e);
+      toast({ title: "Re-sync failed", description: e?.message || "Could not re-sync replies.", variant: "destructive" });
+    } finally {
+      setIsResyncing(false);
+    }
+  }, [campaignId, queryClient]);
+
   useEffect(() => {
     const initial = setTimeout(syncReplies, 2000);
     const interval = setInterval(syncReplies, 60_000);
